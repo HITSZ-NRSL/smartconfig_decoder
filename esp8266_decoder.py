@@ -49,18 +49,23 @@ for line in p.stdout:
 def crc8():
 	crcTable = []
 	for value in range(256):
+		remainder = value
 		for bit in range(8):
-			if (value&0x01)!=0:
-				value = (value >> 1)^0x8c
+			if (remainder&0x01)!=0:
+				remainder = (remainder>>1)^0x8c
 			else:	
-				value = value >> 1
-		crcTable.append(value)
+				remainder = remainder>>1
+		crcTable.append(remainder)
 	return crcTable
 
+#@param  [data, index]
 def crc8_update(param, crcTable):
-	data = param^0x00
-	result = crcTable[data&0xff]^(0x00<<8)
-	return result
+	value = 0x00    #init value
+	data = param[0]^value
+	value = (crcTable[data&0xff]^(value<<8))&0xff
+	data = param[1]^value
+	value = (crcTable[data&0xff]^(value<<8))&0xff
+	return value 
 
 crc_table = crc8()
 
@@ -85,7 +90,7 @@ def crc8_check(param):
 		return -1
 	crc_value  = (param[0][1]<<4) + param[2][1]
 	data_value = (param[0][2]<<4) + param[2][2]
-	crc_value_data = crc8_update(data_value, crc_table)
+	crc_value_data = crc8_update([data_value,param[1][1]], crc_table)
 	print "crc_value: %x  data_value: %x   crc_value_data: %x" %(crc_value, data_value, crc_value_data)
 	return
 
