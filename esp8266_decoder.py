@@ -91,15 +91,20 @@ def crc8_check(param):
 	crc_value  = (param[0][1]<<4) + param[2][1]
 	data_value = (param[0][2]<<4) + param[2][2]
 	crc_value_data = crc8_update([data_value,param[1][1]], crc_table)
-	print "crc_value: %x  data_value: %x   crc_value_data: %x" %(crc_value, data_value, crc_value_data)
-	return
+	if crc_value == crc_value_data:
+		print "crc_value: %x  data_value: %x   crc_value_data: %x" %(crc_value, data_value, crc_value_data)
+		print "crc succeed"
+		return 1
+	else:
+		return -1
 
 #@data_byte   divide into 3 16bit:
 #  1st 16bit, 0x00 crc_high, data_high, 
 #  2st 16bit, 0x01 index, 
 #  3st 16bit, 0x00 crc_low, data_low, 
 data_byte = [] 
-pre_data16bit = []
+#data_seq  =   #here 100 may be a potential bug
+data_seq = {} #dict
 for line in p.stdout:
 	if line.find("length") == -1:
 		continue
@@ -114,11 +119,14 @@ for line in p.stdout:
 		index_pattern = [data_byte[0][0], data_byte[1][0], data_byte[2][0]]
 		if index_pattern==[0,1,0]:
 			print data_byte
-			crc8_check(data_byte)			
+			if crc8_check(data_byte) == 1:
+				if data_seq.has_key(data_byte[1][1])!=True:
+					data_seq[data_byte[1][1]] = (data_byte[0][2]<<4) + data_byte[2][2]
+				
 			data_byte = []
 		else:
 			data_byte = data_byte[1:]
-
+	print "data_seq: " ,data_seq 
 	if ip!=ippre:
 		continue
 	print length, ip	
