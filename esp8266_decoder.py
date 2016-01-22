@@ -69,7 +69,7 @@ def decoder_step1(param):
 	data = param - 40
 	out = data>>8
 	if out==0:
-		crc_value = data&0x00f0
+		crc_value = (data&0x00f0)>>4
 		print "crc_value: ", crc_value
 		data_value = data&0x000f
 		print "data_value: ", data_value
@@ -78,8 +78,17 @@ def decoder_step1(param):
 		print "index: ", data&0x00ff
 		return [out, data&0x00ff]
 
-def crc8_check(param)
+def crc8_check(param):
 	print param
+	#combine data
+	if len(param[0])!=3 or len(param[2])!=3:
+		return -1
+	crc_value  = (param[0][1]<<4) + param[2][1]
+	data_value = (param[0][2]<<4) + param[2][2]
+	crc_value_data = crc8_update(data_value, crc_table)
+	print "crc_value: %x  data_value: %x   crc_value_data: %x" %(crc_value, data_value, crc_value_data)
+	return
+
 #@data_byte   divide into 3 16bit:
 #  1st 16bit, 0x00 crc_high, data_high, 
 #  2st 16bit, 0x01 index, 
@@ -100,7 +109,7 @@ for line in p.stdout:
 		index_pattern = [data_byte[0][0], data_byte[1][0], data_byte[2][0]]
 		if index_pattern==[0,1,0]:
 			print data_byte
-			
+			crc8_check(data_byte)			
 			data_byte = []
 		else:
 			data_byte = data_byte[1:]
