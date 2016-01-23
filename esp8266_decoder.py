@@ -1,6 +1,7 @@
-import os
+import os,signal
 import commands
 import string
+import time
 from subprocess import Popen, PIPE
 
 commands.getstatus('airmon-ng stop mon0')
@@ -9,16 +10,19 @@ commands.getstatus('airmon-ng start wlan0')
 #os.system('iwconfig 
 # You need to shutdown wlan0 first, unless you can not change the channel of mon0
 commands.getstatus('ifconfig wlan0 down')
-commands.getstatus('iwconfig mon0 channel 1')
+
+wifi_channel = 1
+commands.getstatus("iwconfig mon0 channel %d" %wifi_channel)
 #os.system('tcpdump -i mon0 -t -q -c 4 udp portrange 0-8000 and net 234')
 #output = commands.getoutput('tcpdump -i mon0 -t -q -c 16 udp portrange 0-8000 and net 234')
 #lines = output.split("\n")
 #for line in lines:
-p = Popen("tcpdump -i mon0 -t -q udp portrange 0-8000 and net 234", shell=True, stdout=PIPE)
+p = Popen("tcpdump -i mon0 -t -q -e udp portrange 0-8000 and net 234", shell=True, stdout=PIPE)
 
 ippre = []
 ipcount = 0
 length_list = []
+
 for line in p.stdout:
 	if line.find("length") == -1:
 		continue
@@ -105,13 +109,66 @@ def crc8_check(param):
 data_byte = [] 
 #data_seq  =   #here 100 may be a potential bug
 data_seq = {} #dict
+data_received = False
+ApPasswd = "" 
+ApSsid   = ""
+ApEnc    = ""
+ApAuth   = ""
+ApBSsid  = []
+SourceIp = []
+
+def getApBSsid(param):
+	print param
+	data_line = param
+	data_line = param[param.find("BSSID:") + 6:]
+	data_line = data_line[:(data_line.find(" "))]
+	data_line = data_line.upper()
+	return data_line
+
+def getApSsidEncAuth(bssid, channel):
+	enc_list  = ['OPN', 'WPA', 'WPA2', 'WEP']
+	auth_list = ['psk']
+	result = -1
+	ap_enc  = []
+	ap_auth = []
+	ap_ssid = []
+    	handle = Popen("airodump-ng mon0 --bssid %s --channel %d" %(bssid, channel), shell=True, stdout=PIPE, stderr=PIPE)
+	for ln in handle.stderr:
+		print bssid
+		print ln
+		if ln.find(bssid) != -1:
+			result  = ln.rstrip().split(" ")	
+			ap_ssid = result[-1] 
+			for vl in result:
+				if ap_enc == []:
+					for enc in enc_list:
+						if vl == enc:
+							ap_enc = enc
+						continue
+				if ap_auth == []:
+					for auth in auth_list:
+						if vl == auth:
+							ap_auth = enc
+			break
+	return ap_ssid, ap_enc, ap_auth 
+
+# head_data are the first 9 bytes of the DATA
+head_data_ready = False
 for line in p.stdout:
 	if line.find("length") == -1:
 		continue
+
+	if ApBSsid == []:
+		ApBSsid = getApBSsid(line)
+		ApSsid, ApEnc, ApAuth  = getApSsidEncAuth(ApBSsid, wifi_channel)
+
         important_msg =	line.splitlines()[0].split(">")[1].lstrip()
 	#print important_msg[1]
         iplen  = important_msg.split(" ")
 	ip     = iplen[0].split(".")[0:4]
+	#if ip!=ippre:
+	#	continue
+
 	length = iplen[-1]
 	de_value = decoder_step1(string.atoi(length, 10))
 	data_byte.append(de_value)
@@ -126,12 +183,39 @@ for line in p.stdout:
 			data_byte = []
 		else:
 			data_byte = data_byte[1:]
-	print "data_seq: " ,data_seq 
-	if ip!=ippre:
+
+	for i in range(9):
+		if data_seq.has_key(i)==False:
+			break
+		if i == 8:
+			head_data_ready = True
+ 	if head_data_ready==False:
 		continue
+	
+	SourceIp = "%d:%d:%d:%d" %(data_seq.get(5),data_seq.get(6),data_seq.get(7),data_seq.get(8)) 	
+	if ApBSsid != []:
+		if data_seq.get(1)>0:
+			for i in range(data_seq.get(1)):
+				if data_seq.has_key(i+9)==False:
+					break
+				ApPasswd += chr(data_seq.get(i+9))
+				if i == (data_seq.get(1) - 1):
+					data_received = True
+			if data_received == False:
+				ApPasswd = []	
+	        else:
+			ApPasswd = []
+			print "Empty password"
+
+	print "ApBSsid %s,  ApSsid %s, ApEnc %s, ApAuth %s, SourceIp %s, ApPasswd %s" %(ApBSsid, ApSsid, ApEnc, ApAuth, SourceIp, ApPasswd)
+	if data_received == True:
+			break
+		
 	print length, ip	
 	
-retval = p.wait()  		
+#data we need: #ApSsid, ApBSsid, ApPasswd, ApEncription, ApAuthentication, SourceIP, SourcePort
 
+#os.killpg(p.pid,signal.SIGKILL)
+#os.waitpid(p.pid, 0)
 
 
