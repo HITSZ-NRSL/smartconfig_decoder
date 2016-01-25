@@ -233,14 +233,15 @@ void input_thread( void *arg) {
 	    pthread_mutex_unlock( &(G.mx_sort) );
 	}
 
-	if(keycode == KEY_SPACE) {
-	    G.do_pause = (G.do_pause+1)%2;
+//	if(keycode == KEY_SPACE) {
+	   // G.do_pause = (G.do_pause+1)%2;
+	    G.do_pause = 0;
 	    if(G.do_pause) {
 		snprintf(G.message, sizeof(G.message), "][ paused output");
 		pthread_mutex_lock( &(G.mx_print) );
 
 		    fprintf( stderr, "\33[1;1H" );
-		    dump_print( G.ws.ws_row, G.ws.ws_col, G.num_cards );
+		    //dump_print( G.ws.ws_row, G.ws.ws_col, G.num_cards );
 		    fprintf( stderr, "\33[J" );
 		    fflush(stderr);
 
@@ -248,7 +249,7 @@ void input_thread( void *arg) {
 	    }
 	    else
 		snprintf(G.message, sizeof(G.message), "][ resumed output");
-	}
+//	}
 
 	if(keycode == KEY_r) {
 	    G.do_sort_always = (G.do_sort_always+1)%2;
@@ -338,7 +339,7 @@ void input_thread( void *arg) {
 	    pthread_mutex_lock( &(G.mx_print) );
 
 		fprintf( stderr, "\33[1;1H" );
-		dump_print( G.ws.ws_row, G.ws.ws_col, G.num_cards );
+		//dump_print( G.ws.ws_row, G.ws.ws_col, G.num_cards );
 		fprintf( stderr, "\33[J" );
 		fflush(stderr);
 
@@ -882,6 +883,16 @@ int dump_add_packet( unsigned char *h80211, int caplen, struct rx_info *ri, int 
         case  1: memcpy( bssid, h80211 +  4, 6 ); break;  //ToDS
         case  2: memcpy( bssid, h80211 + 10, 6 ); break;  //FromDS
         case  3: memcpy( bssid, h80211 + 10, 6 ); break;  //WDS -> Transmitter taken as BSSID
+    }
+    
+    if ((h80211[1] &3) == 1){
+	
+        unsigned char dst_mac[6];
+        memcpy( dst_mac, h80211 +  16, 6 );  //DS
+	printf("The dst mac address is %02X:%02X:%02X:%02X:%02X:%02X ", dst_mac[0], dst_mac[1],dst_mac[2],dst_mac[3],dst_mac[4],dst_mac[5]);
+	printf("The bssid is %02X:%02X:%02X:%02X:%02X:%02X ", bssid[0], bssid[1],bssid[2],bssid[3],bssid[4],bssid[5]);
+	printf("The caplen: %d\n", caplen - 50 - 20 - 8);
+	return(0);
     }
 
     if( memcmp(G.f_bssid, NULL_MAC, 6) != 0 )
@@ -2541,387 +2552,6 @@ static char *parse_timestamp(unsigned long long timestamp) {
 
 void dump_print( int ws_row, int ws_col, int if_num )
 {
-    time_t tt;
-    struct tm *lt;
-    int nlines, i, n, len;
-    char strbuf[512];
-    char buffer[512];
-    char ssid_list[512];
-    struct AP_info *ap_cur;
-    struct ST_info *st_cur;
-    struct NA_info *na_cur;
-    int columns_ap = 83;
-    int columns_sta = 74;
-    int columns_na = 68;
-
-    int num_ap;
-    int num_sta;
-
-    if(!G.singlechan) columns_ap -= 4; //no RXQ in scan mode
-    if(G.show_uptime) columns_ap += 15; //show uptime needs more space
-
-    nlines = 2;
-
-    if( nlines >= ws_row )
-        return;
-
-    if(G.do_sort_always) {
-	pthread_mutex_lock( &(G.mx_sort) );
-	    dump_sort();
-	pthread_mutex_unlock( &(G.mx_sort) );
-    }
-
-    tt = time( NULL );
-    lt = localtime( &tt );
-
-    if(G.is_berlin)
-    {
-        G.maxaps = 0;
-        G.numaps = 0;
-        ap_cur = G.ap_end;
-
-        while( ap_cur != NULL )
-        {
-            G.maxaps++;
-            if( ap_cur->nb_pkt < 2 || time( NULL ) - ap_cur->tlast > G.berlin ||
-                memcmp( ap_cur->bssid, BROADCAST, 6 ) == 0 )
-            {
-                ap_cur = ap_cur->prev;
-                continue;
-            }
-            G.numaps++;
-            ap_cur = ap_cur->prev;
-        }
-
-        if(G.numaps > G.maxnumaps)
-            G.maxnumaps = G.numaps;
-
-//        G.maxaps--;
-    }
-
-    /*
-     *  display the channel, battery, position (if we are connected to GPSd)
-     *  and current time
-     */
-
-    memset( strbuf, '\0', sizeof(strbuf) );
-    strbuf[ws_col - 1] = '\0';
-    fprintf( stderr, "%s\n", strbuf );
-
-    if(G.freqoption)
-    {
-        snprintf(strbuf, sizeof(strbuf)-1, " Freq %4d", G.frequency[0]);
-        for(i=1; i<if_num; i++)
-        {
-            memset( buffer, '\0', sizeof(buffer) );
-            snprintf(buffer, sizeof(buffer) , ",%4d", G.frequency[i]);
-            strncat(strbuf, buffer, sizeof(strbuf) - strlen(strbuf) - 1);
-        }
-    }
-    else
-    {
-        snprintf(strbuf, sizeof(strbuf)-1, " CH %2d", G.channel[0]);
-        for(i=1; i<if_num; i++)
-        {
-            memset( buffer, '\0', sizeof(buffer) );
-            snprintf(buffer, sizeof(buffer) , ",%2d", G.channel[i]);
-            strncat(strbuf, buffer, sizeof(strbuf) - strlen(strbuf) -1);
-        }
-    }
-    memset( buffer, '\0', sizeof(buffer) );
-
-    if (G.gps_loc[0]) {
-        snprintf( buffer, sizeof( buffer ) - 1,
-              " %s[ GPS %8.3f %8.3f %8.3f %6.2f "
-              "][ Elapsed: %s ][ %04d-%02d-%02d %02d:%02d ", G.batt,
-              G.gps_loc[0], G.gps_loc[1], G.gps_loc[2], G.gps_loc[3],
-              G.elapsed_time , 1900 + lt->tm_year,
-              1 + lt->tm_mon, lt->tm_mday, lt->tm_hour, lt->tm_min );
-    }
-    else
-    {
-        snprintf( buffer, sizeof( buffer ) - 1,
-              " %s[ Elapsed: %s ][ %04d-%02d-%02d %02d:%02d ",
-              G.batt, G.elapsed_time, 1900 + lt->tm_year,
-              1 + lt->tm_mon, lt->tm_mday, lt->tm_hour, lt->tm_min );
-    }
-
-    strncat(strbuf, buffer, (512-strlen(strbuf)));
-    memset( buffer, '\0', 512 );
-
-    if(G.is_berlin)
-    {
-        snprintf( buffer, sizeof( buffer ) - 1,
-              " ][%3d/%3d/%4d ",
-              G.numaps, G.maxnumaps, G.maxaps);
-    }
-
-    strncat(strbuf, buffer, (512-strlen(strbuf)));
-    memset( buffer, '\0', 512 );
-
-    if(strlen(G.message) > 0)
-    {
-        strncat(strbuf, G.message, (512-strlen(strbuf)));
-    }
-
-    //add traling spaces to overwrite previous messages
-    strncat(strbuf, "                                        ", (512-strlen(strbuf)));
-
-    strbuf[ws_col - 1] = '\0';
-    fprintf( stderr, "%s\n", strbuf );
-
-    /* print some informations about each detected AP */
-
-    nlines += 3;
-
-    if( nlines >= ws_row )
-        return;
-
-    memset( strbuf, ' ', ws_col - 1 );
-    strbuf[ws_col - 1] = '\0';
-    fprintf( stderr, "%s\n", strbuf );
-
-    if(G.show_ap) {
-
-    strbuf[0] = 0;
-    strcat(strbuf, " BSSID              PWR ");
-
-    if(G.singlechan)
-    	strcat(strbuf, "RXQ ");
-
-    strcat(strbuf, " Beacons    #Data, #/s  CH  MB   ENC  CIPHER AUTH ");
-
-    if (G.show_uptime)
-    	strcat(strbuf, "       UPTIME  ");
-
-    strcat(strbuf, "ESSID");
-
-	if ( G.show_manufacturer && ( ws_col > (columns_ap - 4) ) ) {
-		// write spaces (32).
-		memset(strbuf+columns_ap, 32, G.maxsize_essid_seen - 5 ); // 5 is the len of "ESSID"
-		snprintf(strbuf+columns_ap+G.maxsize_essid_seen-5, 15,"%s","  MANUFACTURER");
-	}
-
-	strbuf[ws_col - 1] = '\0';
-	fprintf( stderr, "%s\n", strbuf );
-
-	memset( strbuf, ' ', ws_col - 1 );
-	strbuf[ws_col - 1] = '\0';
-	fprintf( stderr, "%s\n", strbuf );
-
-	ap_cur = G.ap_end;
-
-	if(G.selection_ap) {
-	    num_ap = get_ap_list_count();
-	    if(G.selected_ap > num_ap)
-		G.selected_ap = num_ap;
-	}
-
-	if(G.selection_sta) {
-	    num_sta = get_sta_list_count();
-	    if(G.selected_sta > num_sta)
-		G.selected_sta = num_sta;
-	}
-
-	num_ap = 0;
-
-	if(G.selection_ap) {
-	    G.start_print_ap = G.selected_ap - ((ws_row-1) - nlines) + 1;
-	    if(G.start_print_ap < 1)
-		G.start_print_ap = 1;
-    //	printf("%i\n", G.start_print_ap);
-	}
-
-
-	while( ap_cur != NULL )
-	{
-	    /* skip APs with only one packet, or those older than 2 min.
-	    * always skip if bssid == broadcast */
-
-	    if( ap_cur->nb_pkt < 2 || time( NULL ) - ap_cur->tlast > G.berlin ||
-		memcmp( ap_cur->bssid, BROADCAST, 6 ) == 0 )
-	    {
-		ap_cur = ap_cur->prev;
-		continue;
-	    }
-
-	    if(ap_cur->security != 0 && G.f_encrypt != 0 && ((ap_cur->security & G.f_encrypt) == 0))
-	    {
-		ap_cur = ap_cur->prev;
-		continue;
-	    }
-
-	    if(is_filtered_essid(ap_cur->essid))
-	    {
-		ap_cur = ap_cur->prev;
-		continue;
-	    }
-
-	    num_ap++;
-
-	    if(num_ap < G.start_print_ap) {
-		ap_cur = ap_cur->prev;
-		continue;
-	    }
-
-	    nlines++;
-
-	    if( nlines > (ws_row-1) )
-		return;
-
-	    memset(strbuf, '\0', sizeof(strbuf));
-
-	    snprintf( strbuf, sizeof(strbuf), " %02X:%02X:%02X:%02X:%02X:%02X",
-		    ap_cur->bssid[0], ap_cur->bssid[1],
-		    ap_cur->bssid[2], ap_cur->bssid[3],
-		    ap_cur->bssid[4], ap_cur->bssid[5] );
-
-	    len = strlen(strbuf);
-
-	    if(G.singlechan)
-	    {
-		snprintf( strbuf+len, sizeof(strbuf)-len, "  %3d %3d %8ld %8ld %4d",
-			ap_cur->avg_power,
-			ap_cur->rx_quality,
-			ap_cur->nb_bcn,
-			ap_cur->nb_data,
-			ap_cur->nb_dataps );
-	    }
-	    else
-	    {
-		snprintf( strbuf+len, sizeof(strbuf)-len, "  %3d %8ld %8ld %4d",
-			ap_cur->avg_power,
-			ap_cur->nb_bcn,
-			ap_cur->nb_data,
-			ap_cur->nb_dataps );
-	    }
-
-	    len = strlen(strbuf);
-
-	    snprintf( strbuf+len, sizeof(strbuf)-len, " %3d %3d%c%c ",
-		    ap_cur->channel, ap_cur->max_speed,
-		    ( ap_cur->security & STD_QOS ) ? 'e' : ' ',
-		    ( ap_cur->preamble ) ? '.' : ' ');
-
-	    len = strlen(strbuf);
-
-	    if( (ap_cur->security & (STD_OPN|STD_WEP|STD_WPA|STD_WPA2)) == 0) snprintf( strbuf+len, sizeof(strbuf)-len, "    " );
-	    else if( ap_cur->security & STD_WPA2 ) snprintf( strbuf+len, sizeof(strbuf)-len, "WPA2" );
-	    else if( ap_cur->security & STD_WPA  ) snprintf( strbuf+len, sizeof(strbuf)-len, "WPA " );
-	    else if( ap_cur->security & STD_WEP  ) snprintf( strbuf+len, sizeof(strbuf)-len, "WEP " );
-	    else if( ap_cur->security & STD_OPN  ) snprintf( strbuf+len, sizeof(strbuf)-len, "OPN " );
-
-	    strncat( strbuf, " ", sizeof(strbuf) - strlen(strbuf) - 1);
-
-	    len = strlen(strbuf);
-
-	    if( (ap_cur->security & (ENC_WEP|ENC_TKIP|ENC_WRAP|ENC_CCMP|ENC_WEP104|ENC_WEP40)) == 0 ) snprintf( strbuf+len, sizeof(strbuf)-len, "       ");
-	    else if( ap_cur->security & ENC_CCMP   ) snprintf( strbuf+len, sizeof(strbuf)-len, "CCMP   ");
-	    else if( ap_cur->security & ENC_WRAP   ) snprintf( strbuf+len, sizeof(strbuf)-len, "WRAP   ");
-	    else if( ap_cur->security & ENC_TKIP   ) snprintf( strbuf+len, sizeof(strbuf)-len, "TKIP   ");
-	    else if( ap_cur->security & ENC_WEP104 ) snprintf( strbuf+len, sizeof(strbuf)-len, "WEP104 ");
-	    else if( ap_cur->security & ENC_WEP40  ) snprintf( strbuf+len, sizeof(strbuf)-len, "WEP40  ");
-	    else if( ap_cur->security & ENC_WEP    ) snprintf( strbuf+len, sizeof(strbuf)-len, "WEP    ");
-
-	    len = strlen(strbuf);
-
-	    if( (ap_cur->security & (AUTH_OPN|AUTH_PSK|AUTH_MGT)) == 0 ) snprintf( strbuf+len, sizeof(strbuf)-len, "   ");
-	    else if( ap_cur->security & AUTH_MGT   ) snprintf( strbuf+len, sizeof(strbuf)-len, "MGT");
-	    else if( ap_cur->security & AUTH_PSK   )
-	    {
-		if( ap_cur->security & STD_WEP )
-		    snprintf( strbuf+len, sizeof(strbuf)-len, "SKA");
-		else
-		    snprintf( strbuf+len, sizeof(strbuf)-len, "PSK");
-	    }
-	    else if( ap_cur->security & AUTH_OPN   ) snprintf( strbuf+len, sizeof(strbuf)-len, "OPN");
-
-	    len = strlen(strbuf);
-
-	    if (G.show_uptime) {
-	    	snprintf(strbuf+len, sizeof(strbuf)-len, " %14s", parse_timestamp(ap_cur->timestamp));
-	    	len = strlen(strbuf);
-	    }
-
-	    strbuf[ws_col-1] = '\0';
-
-	    if(G.selection_ap && ((num_ap) == G.selected_ap)) {
-		if(G.mark_cur_ap) {
-		    if(ap_cur->marked == 0) {
-			ap_cur->marked = 1;
-		    }
-		    else {
-			ap_cur->marked_color++;
-			if(ap_cur->marked_color > (TEXT_MAX_COLOR-1)) {
-			    ap_cur->marked_color = 1;
-			    ap_cur->marked = 0;
-			}
-		    }
-		    G.mark_cur_ap = 0;
-		}
-		textstyle(TEXT_REVERSE);
-		memcpy(G.selected_bssid, ap_cur->bssid, 6);
-	    }
-
-	    if(ap_cur->marked) {
-		textcolor_fg(ap_cur->marked_color);
-	    }
-
-	    fprintf(stderr, "%s", strbuf);
-
-	    if( ws_col > (columns_ap - 4) )
-	    {
-		memset( strbuf, 0, sizeof( strbuf ) );
-		if(ap_cur->essid[0] != 0x00)
-		{
-		    snprintf( strbuf,  sizeof( strbuf ) - 1,
-			    "%s", ap_cur->essid );
-		}
-		else
-		{
-		    snprintf( strbuf,  sizeof( strbuf ) - 1,
-			    "<length:%3d>%s", ap_cur->ssid_length, "\x00" );
-		}
-
-		if (G.show_manufacturer) {
-
-			if (G.maxsize_essid_seen <= strlen(strbuf))
-				G.maxsize_essid_seen = strlen(strbuf);
-			else // write spaces (32)
-				memset( strbuf+strlen(strbuf), 32,  (G.maxsize_essid_seen - strlen(strbuf))  );
-
-			snprintf( strbuf + G.maxsize_essid_seen , sizeof(strbuf)-G.maxsize_essid_seen, "  %s", ap_cur->manuf );
-		}
-
-		// write spaces (32) until the end of column
-		memset( strbuf+strlen(strbuf), 32, ws_col - (columns_ap - 4 ) );
-
-		// end the string at the end of the column
-		strbuf[ws_col - (columns_ap - 4)] = '\0';
-
-		fprintf( stderr, "  %s", strbuf );
-	    }
-
-	    fprintf( stderr, "\n" );
-
-	    if( (G.selection_ap && ((num_ap) == G.selected_ap)) || (ap_cur->marked) ) {
-		textstyle(TEXT_RESET);
-	    }
-
-	    ap_cur = ap_cur->prev;
-	}
-
-	/* print some informations about each detected station */
-
-	nlines += 3;
-
-	if( nlines >= (ws_row-1) )
-	    return;
-
-	memset( strbuf, ' ', ws_col - 1 );
-	strbuf[ws_col - 1] = '\0';
-	fprintf( stderr, "%s\n", strbuf );
-    }
 }
 
 
@@ -4044,465 +3674,7 @@ int main( int argc, char *argv[] )
     memset(G.f_netmask, '\x00', 6);
     memset(G.wpa_bssid, '\x00', 6);
 
-
-    /* check the arguments */
-
-    for(i=0; long_options[i].name != NULL; i++);
-    num_opts = i;
-
-    for(i=0; i<argc; i++) //go through all arguments
-    {
-        found = 0;
-        if(strlen(argv[i]) >= 3)
-        {
-            if(argv[i][0] == '-' && argv[i][1] != '-')
-            {
-                //we got a single dash followed by at least 2 chars
-                //lets check that against our long options to find errors
-                for(j=0; j<num_opts;j++)
-                {
-                    if( strcmp(argv[i]+1, long_options[j].name) == 0 )
-                    {
-                        //found long option after single dash
-                        found = 1;
-                        if(i>1 && strcmp(argv[i-1], "-") == 0)
-                        {
-                            //separated dashes?
-                            printf("Notice: You specified \"%s %s\". Did you mean \"%s%s\" instead?\n", argv[i-1], argv[i], argv[i-1], argv[i]);
-                        }
-                        else
-                        {
-                            //forgot second dash?
-                            printf("Notice: You specified \"%s\". Did you mean \"-%s\" instead?\n", argv[i], argv[i]);
-                        }
-                        break;
-                    }
-                }
-                if(found)
-                {
-                    sleep(3);
-                    break;
-                }
-            }
-        }
-    }
-
-    do
-    {
-        option_index = 0;
-
-        option = getopt_long( argc, argv,
-                        "b:c:egiw:s:t:u:m:d:N:R:aHDB:Ahf:r:EC:o:x:MU",
-                        long_options, &option_index );
-
-        if( option < 0 ) break;
-
-        switch( option )
-        {
-            case 0 :
-
-                break;
-
-            case ':':
-
-                printf("\"%s --help\" for help.\n", argv[0]);
-                return( 1 );
-
-            case '?':
-
-                printf("\"%s --help\" for help.\n", argv[0]);
-                return( 1 );
-
-			case 'E':
-				G.detect_anomaly = 1;
-				break;
-
-            case 'e':
-
-                G.one_beacon = 0;
-                break;
-
-            case 'a':
-
-                G.asso_client = 1;
-                break;
-
-            case 'A':
-
-                G.show_ack = 1;
-                break;
-
-            case 'h':
-
-                G.hide_known = 1;
-                break;
-
-            case 'D':
-
-                G.decloak = 0;
-                break;
-
-	    case 'M':
-
-                G.show_manufacturer = 1;
-                break;
-
-	    case 'U' :
-	    		G.show_uptime = 1;
-	    		break;
-
-            case 'c' :
-
-                if (G.channel[0] > 0 || G.chanoption == 1) {
-                    if (G.chanoption == 1)
-                        printf( "Notice: Channel range already given\n" );
-                    else
-                        printf( "Notice: Channel already given (%d)\n", G.channel[0]);
-                    break;
-                }
-
-                G.channel[0] = getchannels(optarg);
-
-                if ( G.channel[0] < 0 )
-                    goto usage;
-
-                G.chanoption = 1;
-
-                if( G.channel[0] == 0 )
-                {
-                    G.channels = G.own_channels;
-                    break;
-                }
-                G.channels = bg_chans;
-                break;
-
-            case 'C' :
-
-                if (G.channel[0] > 0 || G.chanoption == 1) {
-                    if (G.chanoption == 1)
-                        printf( "Notice: Channel range already given\n" );
-                    else
-                        printf( "Notice: Channel already given (%d)\n", G.channel[0]);
-                    break;
-                }
-
-                if (G.freqoption == 1) {
-                    printf( "Notice: Frequency range already given\n" );
-                    break;
-                }
-
-                G.freqstring = optarg;
-
-                G.freqoption = 1;
-
-                break;
-
-            case 'b' :
-
-                if (G.chanoption == 1 && option != 'c') {
-                    printf( "Notice: Channel range already given\n" );
-                    break;
-                }
-                freq[0] = freq[1] = 0;
-
-                for (i = 0; i < (int)strlen(optarg); i++) {
-                    if ( optarg[i] == 'a' )
-                        freq[1] = 1;
-                    else if ( optarg[i] == 'b' || optarg[i] == 'g')
-                        freq[0] = 1;
-                    else {
-                        printf( "Error: invalid band (%c)\n", optarg[i] );
-                        printf("\"%s --help\" for help.\n", argv[0]);
-                        exit ( 1 );
-                    }
-                }
-
-                if (freq[1] + freq[0] == 2 )
-                    G.channels = abg_chans;
-                else {
-                    if ( freq[1] == 1 )
-                        G.channels = a_chans;
-                    else
-                        G.channels = bg_chans;
-                }
-
-                break;
-
-            case 'i':
-
-				// Reset output format if it's the first time the option is specified
-				if (output_format_first_time) {
-					output_format_first_time = 0;
-
-					G.output_format_pcap = 0;
-					G.output_format_csv = 0;
-					G.output_format_kismet_csv = 0;
-    				G.output_format_kismet_netxml = 0;
-				}
-
- 				if (G.output_format_pcap) {
-					printf( usage, getVersion("Airodump-ng", _MAJ, _MIN, _SUB_MIN, _REVISION, _BETA, _RC)  );
-					fprintf(stderr, "Invalid output format: IVS and PCAP format cannot be used together.\n");
-					return( 1 );
-				}
-
-                ivs_only = 1;
-                break;
-
-            case 'g':
-
-                G.usegpsd  = 1;
-                /*
-                if (inet_aton(optarg, &provis_addr.sin_addr) == 0 )
-                {
-                    printf("Invalid IP address.\n");
-                    return (1);
-                }
-                */
-                break;
-
-            case 'w':
-
-                if (G.dump_prefix != NULL) {
-                    printf( "Notice: dump prefix already given\n" );
-                    break;
-                }
-                /* Write prefix */
-                G.dump_prefix   = optarg;
-                G.record_data = 1;
-                break;
-
-            case 'r' :
-
-                if( G.s_file )
-                {
-                    printf( "Packet source already specified.\n" );
-                    printf("\"%s --help\" for help.\n", argv[0]);
-                    return( 1 );
-                }
-                G.s_file = optarg;
-                break;
-
-            case 's':
-
-                if (atoi(optarg) > 2) {
-                    goto usage;
-                }
-                if (G.chswitch != 0) {
-                    printf("Notice: switching method already given\n");
-                    break;
-                }
-                G.chswitch = atoi(optarg);
-                break;
-
-            case 'u':
-
-                G.update_s = atoi(optarg);
-
-                /* If failed to parse or value <= 0, use default, 100ms */
-                if (G.update_s <= 0)
-                	G.update_s = REFRESH_RATE;
-
-                break;
-
-            case 'f':
-
-                G.hopfreq = atoi(optarg);
-
-                /* If failed to parse or value <= 0, use default, 100ms */
-                if (G.hopfreq <= 0)
-                	G.hopfreq = DEFAULT_HOPFREQ;
-
-                break;
-
-            case 'B':
-
-                G.is_berlin = 1;
-                G.berlin    = atoi(optarg);
-
-                if (G.berlin <= 0)
-                	G.berlin = 120;
-
-                break;
-
-            case 'm':
-
-                if ( memcmp(G.f_netmask, NULL_MAC, 6) != 0 )
-                {
-                    printf("Notice: netmask already given\n");
-                    break;
-                }
-                if(getmac(optarg, 1, G.f_netmask) != 0)
-                {
-                    printf("Notice: invalid netmask\n");
-                    printf("\"%s --help\" for help.\n", argv[0]);
-                    return( 1 );
-                }
-                break;
-
-            case 'd':
-
-                if ( memcmp(G.f_bssid, NULL_MAC, 6) != 0 )
-                {
-                    printf("Notice: bssid already given\n");
-                    break;
-                }
-                if(getmac(optarg, 1, G.f_bssid) != 0)
-                {
-                    printf("Notice: invalid bssid\n");
-                    printf("\"%s --help\" for help.\n", argv[0]);
-
-                    return( 1 );
-                }
-                break;
-
-            case 'N':
-
-                G.f_essid_count++;
-                G.f_essid = (char**)realloc(G.f_essid, G.f_essid_count * sizeof(char*));
-                G.f_essid[G.f_essid_count-1] = optarg;
-                break;
-
-	    case 'R':
-
-#ifdef HAVE_PCRE
-                if (G.f_essid_regex != NULL)
-                {
-			printf("Error: ESSID regular expression already given. Aborting\n");
-			exit(1);
-                }
-
-                G.f_essid_regex = pcre_compile(optarg, 0, &pcreerror, &pcreerroffset, NULL);
-
-                if (G.f_essid_regex == NULL)
-                {
-			printf("Error: regular expression compilation failed at offset %d: %s; aborting\n", pcreerroffset, pcreerror);
-			exit(1);
-		}
-#else
-                printf("Error: Airodump-ng wasn't compiled with pcre support; aborting\n");
-#endif
-
-                break;
-
-            case 't':
-
-                set_encryption_filter(optarg);
-                break;
-
-			case 'o':
-
-				// Reset output format if it's the first time the option is specified
-				if (output_format_first_time) {
-					output_format_first_time = 0;
-
-					G.output_format_pcap = 0;
-					G.output_format_csv = 0;
-					G.output_format_kismet_csv = 0;
-    				G.output_format_kismet_netxml = 0;
-				}
-
-				// Parse the value
-				output_format_string = strtok(optarg, ",");
-				while (output_format_string != NULL) {
-					if (strlen(output_format_string) != 0) {
-						if (strncasecmp(output_format_string, "csv", 3) == 0
-							|| strncasecmp(output_format_string, "txt", 3) == 0) {
-							G.output_format_csv = 1;
-						} else if (strncasecmp(output_format_string, "pcap", 4) == 0
-							|| strncasecmp(output_format_string, "cap", 3) == 0) {
-                            if (ivs_only) {
-                                printf( usage, getVersion("Airodump-ng", _MAJ, _MIN, _SUB_MIN, _REVISION, _BETA, _RC)  );
-                                fprintf(stderr, "Invalid output format: IVS and PCAP format cannot be used together.\n");
-                                return( 1 );
-                            }
-							G.output_format_pcap = 1;
-						} else if (strncasecmp(output_format_string, "ivs", 3) == 0) {
-                            if (G.output_format_pcap) {
-                                printf( usage, getVersion("Airodump-ng", _MAJ, _MIN, _SUB_MIN, _REVISION, _BETA, _RC)  );
-                                fprintf(stderr, "Invalid output format: IVS and PCAP format cannot be used together.\n");
-                                return( 1 );
-                            }
-							ivs_only = 1;
-						} else if (strncasecmp(output_format_string, "kismet", 6) == 0) {
-							G.output_format_kismet_csv = 1;
-						} else if (strncasecmp(output_format_string, "gps", 3) == 0) {
-							G.usegpsd  = 1;
-						} else if (strncasecmp(output_format_string, "netxml", 6) == 0
-							|| strncasecmp(output_format_string, "newcore", 7) == 0
-							|| strncasecmp(output_format_string, "kismet-nc", 9) == 0
-							|| strncasecmp(output_format_string, "kismet_nc", 9) == 0
-							|| strncasecmp(output_format_string, "kismet-newcore", 14) == 0
-							|| strncasecmp(output_format_string, "kismet_newcore", 14) == 0) {
-							G.output_format_kismet_netxml = 1;
-						} else if (strncasecmp(output_format_string, "default", 6) == 0) {
-							G.output_format_pcap = 1;
-							G.output_format_csv = 1;
-							G.output_format_kismet_csv = 1;
-							G.output_format_kismet_netxml = 1;
-						} else if (strncasecmp(output_format_string, "none", 6) == 0) {
-							G.output_format_pcap = 0;
-							G.output_format_csv = 0;
-							G.output_format_kismet_csv = 0;
-    						G.output_format_kismet_netxml = 0;
-
-							G.usegpsd  = 0;
-							ivs_only = 0;
-						} else {
-							// Display an error if it does not match any value
-							fprintf(stderr, "Invalid output format: <%s>\n", output_format_string);
-							exit(1);
-						}
-					}
-					output_format_string = strtok(NULL, ",");
-				}
-
-				break;
-
-            case 'H':
-
-                printf( usage, getVersion("Airodump-ng", _MAJ, _MIN, _SUB_MIN, _REVISION, _BETA, _RC)  );
-                return( 1 );
-
-            case 'x':
-
-                G.active_scan_sim = atoi(optarg);
-
-                if (G.active_scan_sim <= 0)
-                    G.active_scan_sim = 0;
-                break;
-
-            default : goto usage;
-        }
-    } while ( 1 );
-
-    if( argc - optind != 1 && G.s_file == NULL)
-    {
-        if(argc == 1)
-        {
-usage:
-            printf( usage, getVersion("Airodump-ng", _MAJ, _MIN, _SUB_MIN, _REVISION, _BETA, _RC)  );
-        }
-        if( argc - optind == 0)
-        {
-            printf("No interface specified.\n");
-        }
-        if(argc > 1)
-        {
-            printf("\"%s --help\" for help.\n", argv[0]);
-        }
-        return( 1 );
-    }
-
-    if( argc - optind == 1 )
-        G.s_iface = argv[argc-1];
-
-    if( ( memcmp(G.f_netmask, NULL_MAC, 6) != 0 ) && ( memcmp(G.f_bssid, NULL_MAC, 6) == 0 ) )
-    {
-        printf("Notice: specify bssid \"--bssid\" with \"--netmask\"\n");
-        printf("\"%s --help\" for help.\n", argv[0]);
-        return( 1 );
-    }
+    G.s_iface = "mon0";
 
     if(G.s_iface != NULL)
     {
@@ -4518,126 +3690,23 @@ usage:
                 fdh = fd_raw[i];
         }
 
-        if(G.freqoption == 1 && G.freqstring != NULL) // use frequencies
+        //use channels
+        chan_count = getchancount(0);
+
+	G.channel[0]= 6;	
+        for( i=0; i<G.num_cards; i++ )
         {
-            detect_frequencies(wi[0]);
-            G.frequency[0] = getfrequencies(G.freqstring);
-            if(G.frequency[0] == -1)
-            {
-                printf("No valid frequency given.\n");
-                return(1);
-            }
-
-//             printf("gonna rearrange\n");
-            rearrange_frequencies();
-//             printf("finished rearranging\n");
-
-            freq_count = getfreqcount(0);
-
-            /* find the interface index */
-            /* start a child to hop between frequencies */
-
-            if( G.frequency[0] == 0 )
-            {
-                unused = pipe( G.ch_pipe );
-                unused = pipe( G.cd_pipe );
-
-                signal( SIGUSR1, sighandler );
-
-                if( ! fork() )
-                {
-                    /* reopen cards.  This way parent & child don't share resources for
-                    * accessing the card (e.g. file descriptors) which may cause
-                    * problems.  -sorbo
-                    */
-                    for (i = 0; i < G.num_cards; i++) {
-                        strncpy(ifnam, wi_get_ifname(wi[i]), sizeof(ifnam)-1);
-                        ifnam[sizeof(ifnam)-1] = 0;
-
-                        wi_close(wi[i]);
-                        wi[i] = wi_open(ifnam);
-                        if (!wi[i]) {
-                                printf("Can't reopen %s\n", ifnam);
-                                exit(1);
-                        }
-                    }
-
-					/* Drop privileges */
-					if (setuid( getuid() ) == -1) {
-						perror("setuid");
-					}
-
-                    frequency_hopper(wi, G.num_cards, freq_count);
-                    exit( 1 );
-                }
-            }
-            else
-            {
-                for( i=0; i<G.num_cards; i++ )
-                {
-                    wi_set_freq(wi[i], G.frequency[0]);
-                    G.frequency[i] = G.frequency[0];
-                }
-                G.singlefreq = 1;
-            }
+             wi_set_channel(wi[i], G.channel[0]);
+             G.channel[i] = G.channel[0];
         }
-        else    //use channels
-        {
-            chan_count = getchancount(0);
+        G.singlechan = 1;
+     }
 
-            /* find the interface index */
-            /* start a child to hop between channels */
+     /* Drop privileges */
+     if (setuid( getuid() ) == -1) {
+	perror("setuid");
 
-            if( G.channel[0] == 0 )
-            {
-                unused = pipe( G.ch_pipe );
-                unused = pipe( G.cd_pipe );
-
-                signal( SIGUSR1, sighandler );
-
-                if( ! fork() )
-                {
-                    /* reopen cards.  This way parent & child don't share resources for
-                    * accessing the card (e.g. file descriptors) which may cause
-                    * problems.  -sorbo
-                    */
-                    for (i = 0; i < G.num_cards; i++) {
-                        strncpy(ifnam, wi_get_ifname(wi[i]), sizeof(ifnam)-1);
-                        ifnam[sizeof(ifnam)-1] = 0;
-
-                        wi_close(wi[i]);
-                        wi[i] = wi_open(ifnam);
-                        if (!wi[i]) {
-                                printf("Can't reopen %s\n", ifnam);
-                                exit(1);
-                        }
-                    }
-
-					/* Drop privileges */
-					if (setuid( getuid() ) == -1) {
-						perror("setuid");
-					}
-
-                    channel_hopper(wi, G.num_cards, chan_count);
-                    exit( 1 );
-                }
-            }
-            else
-            {
-                for( i=0; i<G.num_cards; i++ )
-                {
-                    wi_set_channel(wi[i], G.channel[0]);
-                    G.channel[i] = G.channel[0];
-                }
-                G.singlechan = 1;
-            }
-        }
-    }
-
-	/* Drop privileges */
-	if (setuid( getuid() ) == -1) {
-		perror("setuid");
-	}
+     }
 
     
     signal( SIGINT,   sighandler );
@@ -4646,8 +3715,8 @@ usage:
     signal( SIGWINCH, sighandler );
 
     sighandler( SIGWINCH );
-
-    fprintf( stderr, "\33[?25l\33[2J\n" );
+    
+fprintf( stderr, "\33[?25l\33[2J\n" );
 
     start_time = time( NULL );
     tt1        = time( NULL );
@@ -4659,7 +3728,7 @@ usage:
     G.elapsed_time = (char *) calloc( 1, 4 );
     strncpy(G.elapsed_time, "0 s", 4 - 1);
 
-	/* Create start time string for kismet netxml file */
+        /* Create start time string for kismet netxml file */
     G.airodump_start_time = (char *) calloc( 1, 1000 * sizeof(char) );
     strncpy(G.airodump_start_time, ctime( & start_time ), 1000 - 1);
     G.airodump_start_time[strlen(G.airodump_start_time) - 1] = 0; // remove new line
@@ -4667,8 +3736,8 @@ usage:
 
     if( pthread_create( &(G.input_tid), NULL, (void *) input_thread, NULL ) != 0 )
     {
-	perror( "pthread_create failed" );
-	return 1;
+        perror( "pthread_create failed" );
+        return 1;
     }
 
 
@@ -4687,16 +3756,17 @@ usage:
 
             /* sort the APs by power */
 
-	    if(G.sort_by != SORT_BY_NOTHING) {
-		pthread_mutex_lock( &(G.mx_sort) );
-		    dump_sort();
-		pthread_mutex_unlock( &(G.mx_sort) );
-	    }
+            if(G.sort_by != SORT_BY_NOTHING) {
+                pthread_mutex_lock( &(G.mx_sort) );
+                    dump_sort();
+                pthread_mutex_unlock( &(G.mx_sort) );
+            }
         }
 
         if( time( NULL ) - tt2 > 3 )
         {
-            /* update the battery state */
+
+    /* update the battery state */
             free(G.batt);
             G.batt = NULL;
 
@@ -4795,7 +3865,7 @@ usage:
             /* update the window size */
 
             if( ioctl( 0, TIOCGWINSZ, &(G.ws) ) < 0 )
-            {
+         {
                 G.ws.ws_row = 25;
                 G.ws.ws_col = 80;
             }
@@ -4805,18 +3875,19 @@ usage:
 
             /* display the list of access points we have */
 
-	    if(!G.do_pause) {
-		pthread_mutex_lock( &(G.mx_print) );
+            if(!G.do_pause) {
+                pthread_mutex_lock( &(G.mx_print) );
 
-		    fprintf( stderr, "\33[1;1H" );
-		    dump_print( G.ws.ws_row, G.ws.ws_col, G.num_cards );
-		    fprintf( stderr, "\33[J" );
-		    fflush( stdout );
+                    fprintf( stderr, "\33[1;1H" );
+                    dump_print( G.ws.ws_row, G.ws.ws_col, G.num_cards );
+                    fprintf( stderr, "\33[J" );
+                    fflush( stdout );
 
-		pthread_mutex_unlock( &(G.mx_print) );
-	    }
+                pthread_mutex_unlock( &(G.mx_print) );
+            }
             continue;
         }
+
 
         if(G.s_iface != NULL)
         {
