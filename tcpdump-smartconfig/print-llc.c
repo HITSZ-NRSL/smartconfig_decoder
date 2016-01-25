@@ -196,7 +196,7 @@ llc_print(const u_char *p, u_int length, u_int caplen,
 		control = EXTRACT_LE_16BITS(p + 2);
 		is_u = 0;
 	}
-
+#ifndef TCPDUMP_MINI
 	if (ssap_field == LLCSAP_GLOBAL && dsap_field == LLCSAP_GLOBAL) {
 		/*
 		 * This is an Ethernet_802.3 IPX frame; it has an
@@ -219,6 +219,7 @@ llc_print(const u_char *p, u_int length, u_int caplen,
             ipx_print(p, length);
             return (1);
 	}
+#endif
 
 	dsap = dsap_field & ~LLC_IG;
 	ssap = ssap_field & ~LLC_GSAP;
@@ -251,6 +252,7 @@ llc_print(const u_char *p, u_int length, u_int caplen,
 		return (1);
 	}
 
+#ifndef TCPDUMP_MINI
 	if (ssap == LLCSAP_IPX && dsap == LLCSAP_IPX &&
 	    control == LLC_UI) {
 		/*
@@ -266,6 +268,7 @@ llc_print(const u_char *p, u_int length, u_int caplen,
 		ipx_print(p+3, length-3);
 		return (1);
 	}
+#endif
 
 #ifdef TCPDUMP_DO_SMB
 	if (ssap == LLCSAP_NETBEUI && dsap == LLCSAP_NETBEUI
@@ -297,11 +300,13 @@ llc_print(const u_char *p, u_int length, u_int caplen,
 		return (1);
 	}
 #endif
+#ifndef TCPDUMP_MINI
 	if (ssap == LLCSAP_ISONS && dsap == LLCSAP_ISONS
 	    && control == LLC_UI) {
 		isoclns_print(p + 3, length - 3, caplen - 3);
 		return (1);
 	}
+#endif
 
 	if (ssap == LLCSAP_SNAP && dsap == LLCSAP_SNAP
 	    && control == LLC_UI) {
@@ -444,6 +449,7 @@ snap_print(const u_char *p, u_int length, u_int caplen, u_int bridge_pad)
                 case PID_CISCO_CDP:
                         cdp_print(p, length, caplen);
                         return (1);
+#ifndef TCPDUMP_MINI
                 case PID_CISCO_DTP:
                         dtp_print(p, length); 
                         return (1);
@@ -453,6 +459,7 @@ snap_print(const u_char *p, u_int length, u_int caplen, u_int bridge_pad)
                 case PID_CISCO_VTP:
                         vtp_print(p, length);
                         return (1);
+#endif
                 case PID_CISCO_PVST:
                 case PID_CISCO_VLANBRIDGE:
                         stp_print(p, length);
@@ -484,6 +491,7 @@ snap_print(const u_char *p, u_int length, u_int caplen, u_int bridge_pad)
 			ether_print(gndo, p, length, caplen, NULL, NULL);
 			return (1);
 
+#ifndef TCPDUMP_MINI
 		case PID_RFC2684_802_5_FCS:
 		case PID_RFC2684_802_5_NOFCS:
 			/*
@@ -525,6 +533,7 @@ snap_print(const u_char *p, u_int length, u_int caplen, u_int bridge_pad)
 			 */
 			fddi_print(p, length, caplen);
 			return (1);
+#endif
 
 		case PID_RFC2684_BPDU:
 			stp_print(p, length);

@@ -71,6 +71,22 @@ DEPENDENCY_CFLAG =
 	@rm -f $@
 	$(CC) $(FULL_CFLAGS) -c $(srcdir)/$*.c
 
+ifdef TCPDUMP_MINI
+
+CSRC =	addrtoname.c af.c checksum.c cpack.c gmpls.c oui.c gmt2local.c ipproto.c \
+        nlpid.c l2vpn.c machdep.c parsenfsfh.c in_cksum.c \
+	print-802_11.c print-aodv.c print-arp.c print-ascii.c \
+	print-bgp.c print-bootp.c print-cdp.c print-domain.c print-eap.c print-ether.c \
+	print-gre.c print-icmp.c print-igmp.c print-ip.c \
+	print-l2tp.c print-lldp.c print-llc.c \
+ 	print-nfs.c print-ntp.c print-null.c print-olsr.c print-ospf.c \
+	print-ppp.c print-pppoe.c print-pptp.c print-radius.c print-raw.c print-rsvp.c \
+	print-sctp.c print-sip.c print-sll.c print-snmp.c print-stp.c print-sunrpc.c \
+	print-syslog.c print-tcp.c print-telnet.c print-tftp.c print-udp.c \
+	setsignal.c tcpdump.c util.c signature.c print-ipnet.c print-forces.c
+
+else
+
 CSRC =	addrtoname.c af.c checksum.c cpack.c gmpls.c oui.c gmt2local.c ipproto.c \
         nlpid.c l2vpn.c machdep.c parsenfsfh.c in_cksum.c \
 	print-802_11.c print-802_15_4.c print-ap1394.c print-ah.c \
@@ -102,6 +118,8 @@ CSRC =	addrtoname.c af.c checksum.c cpack.c gmpls.c oui.c gmt2local.c ipproto.c 
 LIBNETDISSECT_SRC=print-isakmp.c
 LIBNETDISSECT_OBJ=$(LIBNETDISSECT_SRC:.c=.o)
 LIBNETDISSECT=libnetdissect.a
+
+endif
 
 LOCALSRC = print-ip6.c print-ip6opts.c print-mobility.c print-ripng.c print-icmp6.c print-frag6.c print-rt6.c print-ospf6.c print-dhcp6.c print-babel.c print-smb.c smbutil.c 
 GENSRC = version.c
@@ -286,10 +304,12 @@ $(PROG): $(OBJ)
 	@rm -f $@
 	$(CC) $(FULL_CFLAGS) $(LDFLAGS) -o $@ $(OBJ) $(LIBS)
 
+ifndef TCPDUMP_MINI
 $(LIBNETDISSECT): $(LIBNETDISSECT_OBJ)
 	@rm -f $@
 	$(AR) cr $@ $(LIBNETDISSECT_OBJ) 
 	$(RANLIB) $@
+endif
 
 datalinks.o: $(srcdir)/missing/datalinks.c
 	$(CC) $(FULL_CFLAGS) -o $@ -c $(srcdir)/missing/datalinks.c

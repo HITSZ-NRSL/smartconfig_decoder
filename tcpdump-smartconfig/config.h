@@ -78,7 +78,7 @@
 #define HAVE_PCAP_BREAKLOOP 1
 
 /* Define to 1 if you have the `pcap_create' function. */
-#define HAVE_PCAP_CREATE 1
+//#define HAVE_PCAP_CREATE 1
 
 /* define if libpcap has pcap_datalink_name_to_val() */
 #define HAVE_PCAP_DATALINK_NAME_TO_VAL 1

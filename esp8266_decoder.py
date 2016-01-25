@@ -17,7 +17,7 @@ wifi_channel = 11
 #output = commands.getoutput('tcpdump -i mon0 -t -q -c 16 udp portrange 0-8000 and net 234')
 #lines = output.split("\n")
 #for line in lines:
-p = Popen("tcpdump -i wlan0 -nONtqe -s54 udp portrange 0-65500 and net 234", shell=True, stdout=PIPE)
+p = Popen("tcpdump -i mon0 -nONtqe -s0 udp portrange 0-65500 and net 234", shell=True, stdout=PIPE)
 
 ippre = []
 ipcount = 0

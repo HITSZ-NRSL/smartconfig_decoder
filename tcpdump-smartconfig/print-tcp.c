@@ -573,14 +573,14 @@ tcp_print(register const u_char *bp, register u_int length,
                                         utoval >>= 1;
                                 (void)printf(" %u", utoval);
                                 break;
-
+#ifndef TCPDUMP_MINI
                         case TCPOPT_MPTCP:
                                 datalen = len - 2;
                                 LENCHECK(datalen);
                                 if (!mptcp_print(cp-2, len, flags))
                                         goto bad;
                                 break;
-
+#endif
                         case TCPOPT_EXPERIMENT2:
                                 datalen = len - 2;
                                 LENCHECK(datalen);
@@ -659,8 +659,8 @@ tcp_print(register const u_char *bp, register u_int length,
         if ((flags & TH_RST) && vflag) {
                 print_tcp_rst_data(bp, length);
                 return;
-        } 
-
+        }
+#ifndef TCPDUMP_MINI
         if (packettype) {
                 switch (packettype) {
                 case PT_ZMTP1:
@@ -669,7 +669,7 @@ tcp_print(register const u_char *bp, register u_int length,
                 }
                 return;
         }
-
+#endif
         if (sport == TELNET_PORT || dport == TELNET_PORT) {
                 if (!qflag && vflag)
                         telnet_print(bp, length);
@@ -683,10 +683,12 @@ tcp_print(register const u_char *bp, register u_int length,
 	else if (sport == SMB_PORT || dport == SMB_PORT)
 		smb_tcp_print(bp, length);
 #endif
+#ifndef TCPDUMP_MINI
         else if (sport == BEEP_PORT || dport == BEEP_PORT)
                 beep_print(bp, length);
         else if (sport == OPENFLOW_PORT || dport == OPENFLOW_PORT)
                 openflow_print(bp, length);
+#endif
         else if (length > 2 &&
                  (sport == NAMESERVER_PORT || dport == NAMESERVER_PORT ||
                   sport == MULTICASTDNS_PORT || dport == MULTICASTDNS_PORT)) {
@@ -695,6 +697,7 @@ tcp_print(register const u_char *bp, register u_int length,
                  * XXX packet could be unaligned, it can go strange
                  */
                 ns_print(bp + 2, length - 2, 0);
+#ifndef TCPDUMP_MINI
         } else if (sport == MSDP_PORT || dport == MSDP_PORT) {
                 msdp_print(bp, length);
         } else if (sport == RPKI_RTR_PORT || dport == RPKI_RTR_PORT) {
@@ -702,6 +705,7 @@ tcp_print(register const u_char *bp, register u_int length,
         }
         else if (length > 0 && (sport == LDP_PORT || dport == LDP_PORT)) {
                 ldp_print(bp, length);
+#endif
         }
         else if ((sport == NFS_PORT || dport == NFS_PORT) &&
                  length >= 4 && TTEST2(*bp, 4)) {
