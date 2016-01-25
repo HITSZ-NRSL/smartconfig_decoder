@@ -4,20 +4,20 @@ import string
 import time
 from subprocess import Popen, PIPE
 
-commands.getstatus('airmon-ng stop mon0')
-commands.getstatus('airmon-ng start wlan0')
+#commands.getstatus('airmon-ng stop mon0')
+#commands.getstatus('airmon-ng start wlan0')
 #list existing Aps and find their channels
 #os.system('iwconfig 
 # You need to shutdown wlan0 first, unless you can not change the channel of mon0
-commands.getstatus('ifconfig wlan0 down')
+#commands.getstatus('ifconfig wlan0 down')
 
-wifi_channel = 1
-commands.getstatus("iwconfig mon0 channel %d" %wifi_channel)
+wifi_channel = 11
+#commands.getstatus("iwconfig mon0 channel %d" %wifi_channel)
 #os.system('tcpdump -i mon0 -t -q -c 4 udp portrange 0-8000 and net 234')
 #output = commands.getoutput('tcpdump -i mon0 -t -q -c 16 udp portrange 0-8000 and net 234')
 #lines = output.split("\n")
 #for line in lines:
-p = Popen("tcpdump -i mon0 -t -q -e udp portrange 0-8000 and net 234", shell=True, stdout=PIPE)
+p = Popen("tcpdump -i wlan0 -nONtqe -s54 udp portrange 0-65500 and net 234", shell=True, stdout=PIPE)
 
 ippre = []
 ipcount = 0
@@ -28,7 +28,7 @@ for line in p.stdout:
 		continue
        	print line
         important_msg =	line.splitlines()[0].split(">")[1].lstrip()
-	#print important_msg[1]
+	print important_msg[1]
         iplen  = important_msg.split(" ")
 	ip     = iplen[0].split(".")[0:4]
 	length = iplen[-1]
