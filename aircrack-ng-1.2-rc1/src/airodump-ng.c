@@ -77,9 +77,6 @@
 	GCRY_THREAD_OPTION_PTHREAD_IMPL;
 #endif
 
-void dump_sort( void );
-void dump_print( int ws_row, int ws_col, int if_num );
-
 void textcolor(int attr, int fg, int bg)
 {	char command[13];
 
@@ -2169,11 +2166,6 @@ static char *parse_timestamp(unsigned long long timestamp) {
 
 	return s;
 }
-
-void dump_print( int ws_row, int ws_col, int if_num )
-{
-}
-
 
 char * sanitize_xml(unsigned char * text, int length)
 {
