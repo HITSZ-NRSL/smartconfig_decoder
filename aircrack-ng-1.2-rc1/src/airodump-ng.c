@@ -2902,8 +2902,6 @@ int main( int argc, char *argv[] )
 
     sighandler( SIGWINCH );
     
-fprintf( stderr, "\33[?25l\33[2J\n" );
-
     start_time = time( NULL );
     tt1        = time( NULL );
     tt2        = time( NULL );
@@ -2972,10 +2970,6 @@ fprintf( stderr, "\33[?25l\33[2J\n" );
                     continue;
                 }
                 perror( "select failed" );
-
-                /* Restore terminal */
-                fprintf( stderr, "\33[?25h" );
-                fflush( stdout );
 
                 return( 1 );
             }
