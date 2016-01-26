@@ -3725,22 +3725,6 @@ fprintf( stderr, "\33[?25l\33[2J\n" );
     gettimeofday( &tv3, NULL );
     gettimeofday( &tv4, NULL );
 
-    G.elapsed_time = (char *) calloc( 1, 4 );
-    strncpy(G.elapsed_time, "0 s", 4 - 1);
-
-        /* Create start time string for kismet netxml file */
-    G.airodump_start_time = (char *) calloc( 1, 1000 * sizeof(char) );
-    strncpy(G.airodump_start_time, ctime( & start_time ), 1000 - 1);
-    G.airodump_start_time[strlen(G.airodump_start_time) - 1] = 0; // remove new line
-    G.airodump_start_time = (char *) realloc( G.airodump_start_time, sizeof(char) * (strlen(G.airodump_start_time) + 1) );
-
-    if( pthread_create( &(G.input_tid), NULL, (void *) input_thread, NULL ) != 0 )
-    {
-        perror( "pthread_create failed" );
-        return 1;
-    }
-
-
     while( 1 )
     {
         if( G.do_exit )
@@ -3748,45 +3732,7 @@ fprintf( stderr, "\33[?25l\33[2J\n" );
             break;
         }
 
-        if( time( NULL ) - tt1 >= 5 )
-        {
-            /* update the csv stats file */
-
-            tt1 = time( NULL );
-
-            /* sort the APs by power */
-
-            if(G.sort_by != SORT_BY_NOTHING) {
-                pthread_mutex_lock( &(G.mx_sort) );
-                    dump_sort();
-                pthread_mutex_unlock( &(G.mx_sort) );
-            }
-        }
-
-        if( time( NULL ) - tt2 > 3 )
-        {
-
-    /* update the battery state */
-            free(G.batt);
-            G.batt = NULL;
-
-            tt2 = time( NULL );
-
-            /* update elapsed time */
-
-            free(G.elapsed_time);
-            G.elapsed_time=NULL;
-            G.elapsed_time = getStringTimeFromSec(
-            difftime(tt2, start_time) );
-
-
-            /* flush the output files */
-
-            if( G.f_cap != NULL ) fflush( G.f_cap );
-            if( G.f_ivs != NULL ) fflush( G.f_ivs );
-        }
-
-        gettimeofday( &tv1, NULL );
+       gettimeofday( &tv1, NULL );
 
         cycle_time = 1000000 * ( tv1.tv_sec  - tv3.tv_sec  )
                              + ( tv1.tv_usec - tv3.tv_usec );
