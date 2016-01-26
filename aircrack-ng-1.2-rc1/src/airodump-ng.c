@@ -3533,34 +3533,6 @@ int main( int argc, char *argv[] )
 
     fd_set             rfds;
 
-    static struct option long_options[] = {
-        {"band",     1, 0, 'b'},
-        {"beacon",   0, 0, 'e'},
-        {"beacons",  0, 0, 'e'},
-        {"cswitch",  1, 0, 's'},
-        {"netmask",  1, 0, 'm'},
-        {"bssid",    1, 0, 'd'},
-        {"essid",    1, 0, 'N'},
-        {"essid-regex", 1, 0, 'R'},
-        {"channel",  1, 0, 'c'},
-        {"gpsd",     0, 0, 'g'},
-        {"ivs",      0, 0, 'i'},
-        {"write",    1, 0, 'w'},
-        {"encrypt",  1, 0, 't'},
-        {"update",   1, 0, 'u'},
-        {"berlin",   1, 0, 'B'},
-        {"help",     0, 0, 'H'},
-        {"nodecloak",0, 0, 'D'},
-        {"showack",  0, 0, 'A'},
-        {"detect-anomaly", 0, 0, 'E'},
-        {"output-format",  1, 0, 'o'},
-        {"ignore-negative-one", 0, &G.ignore_negative_one, 1},
-        {"manufacturer",  0, 0, 'M'},
-        {"uptime",   0, 0, 'U'},
-        {0,          0, 0,  0 }
-    };
-
-
 #ifdef USE_GCRYPT
     // Register callback functions to ensure proper locking in the sensitive parts of libgcrypt.
     gcry_control (GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
