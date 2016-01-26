@@ -77,42 +77,6 @@
 	GCRY_THREAD_OPTION_PTHREAD_IMPL;
 #endif
 
-void textcolor(int attr, int fg, int bg)
-{	char command[13];
-
-	/* Command is the control command to the terminal */
-	sprintf(command, "%c[%d;%d;%dm", 0x1B, attr, fg + 30, bg + 40);
-	fprintf(stderr, "%s", command);
-	fflush(stderr);
-}
-
-void textcolor_fg(int fg)
-{	char command[13];
-
-	/* Command is the control command to the terminal */
-	sprintf(command, "\033[%dm", fg + 30);
-	fprintf(stderr, "%s", command);
-	fflush(stderr);
-}
-
-void textcolor_bg(int bg)
-{	char command[13];
-
-	/* Command is the control command to the terminal */
-	sprintf(command, "\033[%dm", bg + 40);
-	fprintf(stderr, "%s", command);
-	fflush(stderr);
-}
-
-void textstyle(int attr)
-{	char command[13];
-
-	/* Command is the control command to the terminal */
-	sprintf(command, "\033[%im", attr);
-	fprintf(stderr, "%s", command);
-	fflush(stderr);
-}
-
 void reset_term() {
   struct termios oldt,
                  newt;
@@ -3155,9 +3119,7 @@ int main( int argc, char *argv[] )
 	pthread_mutex_init( &(G.mx_print), NULL );
     pthread_mutex_init( &(G.mx_sort), NULL );
 
-    textstyle(TEXT_RESET);//(TEXT_RESET, TEXT_BLACK, TEXT_WHITE);
-
-	/* initialize a bunch of variables */
+    /* initialize a bunch of variables */
 
 	srand( time( NULL ) );
     memset( &G, 0, sizeof( G ) );
