@@ -3797,44 +3797,7 @@ fprintf( stderr, "\33[?25l\33[2J\n" );
         else
             usleep(1);
 
-        gettimeofday( &tv2, NULL );
-
-        time_slept += 1000000 * ( tv2.tv_sec  - tv1.tv_sec  )
-                              + ( tv2.tv_usec - tv1.tv_usec );
-
-        if( time_slept > REFRESH_RATE && time_slept > G.update_s * 1000000)
-        {
-            time_slept = 0;
-
-            update_dataps();
-
-            /* update the window size */
-
-            if( ioctl( 0, TIOCGWINSZ, &(G.ws) ) < 0 )
-         {
-                G.ws.ws_row = 25;
-                G.ws.ws_col = 80;
-            }
-
-            if( G.ws.ws_col <   1 ) G.ws.ws_col =   1;
-            if( G.ws.ws_col > 300 ) G.ws.ws_col = 300;
-
-            /* display the list of access points we have */
-
-            if(!G.do_pause) {
-                pthread_mutex_lock( &(G.mx_print) );
-
-                    fprintf( stderr, "\33[1;1H" );
-                    dump_print( G.ws.ws_row, G.ws.ws_col, G.num_cards );
-                    fprintf( stderr, "\33[J" );
-                    fflush( stdout );
-
-                pthread_mutex_unlock( &(G.mx_print) );
-            }
-            continue;
-        }
-
-
+   
         if(G.s_iface != NULL)
         {
             fd_is_set = 0;
