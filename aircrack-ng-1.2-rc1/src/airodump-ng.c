@@ -2659,16 +2659,12 @@ int main( int argc, char *argv[] )
     long time_slept, cycle_time, cycle_time2;
     int caplen=0, i, j, fdh, fd_is_set, chan_count, freq_count, unused;
     int fd_raw[MAX_CARDS], arptype[MAX_CARDS];
-    int ivs_only, found;
     int valid_channel;
     int freq [2];
     int num_opts = 0;
-    int option = 0;
-    int option_index = 0;
     char ifnam[64];
     int wi_read_failed=0;
     int n = 0;
-    int output_format_first_time = 1;
 #ifdef HAVE_PCRE
     const char *pcreerror;
     int pcreerroffset;
@@ -2711,8 +2707,6 @@ int main( int argc, char *argv[] )
     // Tell Libgcrypt that initialization has completed.
     gcry_control (GCRYCTL_INITIALIZATION_FINISHED, 0);
 #endif
-	pthread_mutex_init( &(G.mx_print), NULL );
-    pthread_mutex_init( &(G.mx_sort), NULL );
 
     /* initialize a bunch of variables */
 
@@ -2720,7 +2714,6 @@ int main( int argc, char *argv[] )
     memset( &G, 0, sizeof( G ) );
 
     h80211         =  NULL;
-    ivs_only       =  0;
     G.chanoption   =  0;
     G.freqoption   =  0;
     G.num_cards	   =  0;
@@ -2774,12 +2767,6 @@ int main( int argc, char *argv[] )
     G.f_cap_in     =  NULL;
     G.detect_anomaly = 0;
     G.airodump_start_time = NULL;
-	G.manufList = NULL;
-
-	G.output_format_pcap = 1;
-    G.output_format_csv = 1;
-    G.output_format_kismet_csv = 1;
-    G.output_format_kismet_netxml = 1;
 
 #ifdef HAVE_PCRE
     G.f_essid_regex = NULL;
