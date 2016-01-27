@@ -543,6 +543,46 @@ int remove_namac(unsigned char* mac)
     return( 0 );
 }
 
+int smartconfig_filter_packet( unsigned char *h80211, int caplen )
+{
+    unsigned char bssid[6];
+    unsigned char dst_mac[6];
+
+    /* skip all non probe response frames in active scanning simulation mode */
+    if( G.active_scan_sim > 0 && h80211[0] != 0x50 )
+        return(0);
+
+    /* skip packets smaller than a 802.11 header */
+
+    if( caplen < 24 )
+        return(0);
+
+    /* skip (uninteresting) control frames */
+
+    if( ( h80211[0] & 0x0C ) == 0x04 )
+        return(0);
+
+    /* if it's a LLC null packet, just forget it (may change in the future) */
+    if ( caplen > 28)
+        if ( memcmp(h80211 + 24, llcnull, 4) == 0)
+            return ( 0 );
+
+    /* locate the access point's MAC address */
+    if ((h80211[1] &3) == 1){
+
+	    memcpy( bssid, h80211 + 4, 6 );  //FromDS
+        memcpy( dst_mac, h80211 +  16, 6 );  //DS
+		if(dst_mac[3] == dst_mac[4] && dst_mac[4] == dst_mac[5]) 
+		{
+			printf("The dst mac address is %02X:%02X:%02X:%02X:%02X:%02X ", dst_mac[0], dst_mac[1],dst_mac[2],dst_mac[3],dst_mac[4],dst_mac[5]);
+			printf("The bssid is %02X:%02X:%02X:%02X:%02X:%02X ", bssid[0], bssid[1],bssid[2],bssid[3],bssid[4],bssid[5]);
+			printf("The caplen: %d\n", caplen - 50 - 20 - 8);
+			return(1);
+		}
+	}
+	return(-1);
+}
+
 int dump_add_packet( unsigned char *h80211, int caplen, struct rx_info *ri, int cardnum )
 {
     int i, n, seq, msd, dlen, offset, clen, o;
@@ -599,16 +639,6 @@ int dump_add_packet( unsigned char *h80211, int caplen, struct rx_info *ri, int 
         case  3: memcpy( bssid, h80211 + 10, 6 ); break;  //WDS -> Transmitter taken as BSSID
     }
     
-    if ((h80211[1] &3) == 1){
-	
-        unsigned char dst_mac[6];
-        memcpy( dst_mac, h80211 +  16, 6 );  //DS
-	printf("The dst mac address is %02X:%02X:%02X:%02X:%02X:%02X ", dst_mac[0], dst_mac[1],dst_mac[2],dst_mac[3],dst_mac[4],dst_mac[5]);
-	printf("The bssid is %02X:%02X:%02X:%02X:%02X:%02X ", bssid[0], bssid[1],bssid[2],bssid[3],bssid[4],bssid[5]);
-	printf("The caplen: %d\n", caplen - 50 - 20 - 8);
-	return(0);
-    }
-
     if( memcmp(G.f_bssid, NULL_MAC, 6) != 0 )
     {
         if( memcmp(G.f_netmask, NULL_MAC, 6) != 0 )
@@ -1640,7 +1670,57 @@ char * getStringTimeFromSec(double seconds)
 
 }
 
+int print_ap_list() 
+{
+    time_t tt;
+    struct tm *lt;
+    struct AP_info *ap_cur;
+
+    int num_ap;
+
+    tt = time( NULL );
+    lt = localtime( &tt );
+
+    ap_cur = G.ap_end;
+
+    num_ap = 0;
+
+    while( ap_cur != NULL )
+    {
+        /* skip APs with only one packet, or those older than 2 min.
+         * always skip if bssid == broadcast */
+
+        if( ap_cur->nb_pkt < 2 || time( NULL ) - ap_cur->tlast > G.berlin ||
+            memcmp( ap_cur->bssid, BROADCAST, 6 ) == 0 )
+        {
+            ap_cur = ap_cur->prev;
+            continue;
+        }
+
+        if(ap_cur->security != 0 && G.f_encrypt != 0 && ((ap_cur->security & G.f_encrypt) == 0))
+        {
+            ap_cur = ap_cur->prev;
+            continue;
+        }
+
+        if(is_filtered_essid(ap_cur->essid))
+        {
+            ap_cur = ap_cur->prev;
+            continue;
+        }
+
+	num_ap++;
+  	printf("%02X:%02X:%02X:%02X:%02X:%02X %u.%u.%u.%u %s %d\n", 
+				ap_cur->bssid[0], ap_cur->bssid[1], ap_cur->bssid[2], ap_cur->bssid[3], ap_cur->bssid[4], ap_cur->bssid[5], 
+				ap_cur->lanip[0],ap_cur->lanip[1],ap_cur->lanip[2],ap_cur->lanip[3], ap_cur->essid, ap_cur->channel);
+	ap_cur = ap_cur->prev;
+    }
+
+    return num_ap;
+}
+
 int get_ap_list_count() {
+
     time_t tt;
     struct tm *lt;
     struct AP_info *ap_cur;
@@ -2654,6 +2734,162 @@ int rearrange_frequencies()
     return 0;
 }
 
+
+void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
+{
+    long cycle_time;
+    int caplen=0, fd_is_set, chan_count;
+    int wi_read_failed=0;
+    int chan, i;
+    fd_set  rfds;
+    char ifnam[64];
+    struct rx_info     ri;
+    unsigned char      buffer[4096];
+    unsigned char      *h80211;
+    int *smartconfig_packet_num; //the num of packet that satisfy the format of smartconfig packet, i.e, the last three destination mac values are the same
+	unsigned char fixchannel = 0;
+    //scan every channel for 50ms
+    struct timeval     tv0;
+    struct timeval     tv1;
+
+    gettimeofday( &tv0, NULL );
+    gettimeofday( &tv1, NULL );
+
+    //use channels
+    chan_count = getchancount(1);
+	smartconfig_packet_num = (int *) malloc(chan_count);
+	memset(smartconfig_packet_num, 0, sizeof(smartconfig_packet_num));
+
+    printf("existing channel number: %d, card num: %d \n", chan_count, cards);
+
+    while(1)
+    {
+    	for(chan = 0; chan < chan_count; chan++)
+    	{
+	    	printf("CH: %d \n", G.channels[chan]);
+	    	G.channel[0] = G.channels[chan];
+
+	    	//only one card
+            wi_set_channel(wi[0], G.channel[0]);
+            G.singlechan = 1;
+
+            smartconfig_packet_num[chan] = 0;
+
+            //usleep(100);
+    	    while( 1 )
+     	    {
+               if( G.do_exit )
+               {
+            	   break;
+               }  
+
+       	       gettimeofday( &tv0, NULL );
+
+               cycle_time = 1000000 * ( tv0.tv_sec  - tv1.tv_sec  )
+                             + ( tv0.tv_usec - tv1.tv_usec );
+
+               //scan timeout
+               if( cycle_time > 200000 )
+               {
+                  gettimeofday( &tv1, NULL );
+		  	      break;
+               }
+
+            	/* capture one packet */
+	    
+            	FD_ZERO( &rfds );
+	   			for(i=0; i<cards; i++)
+            		FD_SET( fd_raw[i], &rfds );
+
+		        //tv0.tv_sec  = G.update_s;
+		        //tv0.tv_usec = (G.update_s == 0) ? REFRESH_RATE : 0;
+
+
+		        if( select( *fdh + 1, &rfds, NULL, NULL, &tv0 ) < 0 )
+		        {
+		            if( errno == EINTR )
+		            {
+		                continue;
+		            }
+		            perror( "select failed" );
+
+		            return( 1 );
+		        }
+		        else
+		        	usleep(1);
+
+		        
+		        fd_is_set = 0;
+            	for( i =0; i<cards; i++) 
+	    		{
+		        	if( FD_ISSET( fd_raw[i], &rfds ) )
+		        	{
+		                memset(buffer, 0, sizeof(buffer));
+		                h80211 = buffer;
+		                if ((caplen = wi_read(wi[i], h80211, sizeof(buffer), &ri)) == -1) {
+		                	wi_read_failed++;
+		                	if(wi_read_failed > 1)
+		                	{
+		                         G.do_exit = 1;
+		                         break;
+		                    }
+		                    memset(G.message, '\x00', sizeof(G.message));
+		                    snprintf(G.message, sizeof(G.message), "][ interface %s down ", wi_get_ifname(wi[i]));
+
+		                    //reopen in monitor mode
+
+		                    strncpy(ifnam[i], wi_get_ifname(wi[i]), sizeof(ifnam)-1);
+		                    ifnam[sizeof(ifnam)-1] = 0;
+
+		                    wi_close(wi[i]);
+		                    wi[i] = wi_open(ifnam);
+		                    if (!wi[i]) {
+		                        printf("Can't reopen %s\n", ifnam);
+
+		                        /* Restore terminal */
+		                        fprintf( stderr, "\33[?25h" );
+		                        fflush( stdout );
+
+		                        exit(1);
+		                    }
+
+		                    fd_raw[i] = wi_fd(wi[i]);
+		                 	if (fd_raw[i] > *fdh)
+		                        *fdh = fd_raw[i];
+
+		                    break;
+	//                         return 1;
+		                }
+		                read_pkts++;
+
+		                wi_read_failed = 0;
+						if(smartconfig_filter_packet(h80211, caplen) == 1)
+						{
+							smartconfig_packet_num[chan]++;
+							if(smartconfig_packet_num[chan] > 6)
+							{
+								fixchannel = 1;
+								break;
+							}
+		                }
+		                dump_add_packet( h80211, caplen, &ri, 0 );
+					}
+            	}
+				if(fixchannel == 1)
+					break;
+        	}
+			if(fixchannel == 1)
+				break;
+    	}
+		if(fixchannel == 1)
+			break;
+    }
+   // printf("Ap num: %d", get_ap_list_count());
+   // print_ap_list();
+	while(1){};
+
+	free(smartconfig_packet_num);
+}
 int main( int argc, char *argv[] )
 {
     long time_slept, cycle_time, cycle_time2;
@@ -2661,7 +2897,6 @@ int main( int argc, char *argv[] )
     int fd_raw[MAX_CARDS], arptype[MAX_CARDS];
     int valid_channel;
     int freq [2];
-    int num_opts = 0;
     char ifnam[64];
     int wi_read_failed=0;
     int n = 0;
@@ -2673,7 +2908,6 @@ int main( int argc, char *argv[] )
     struct AP_info *ap_cur, *ap_prv, *ap_next;
     struct ST_info *st_cur, *st_next;
     struct NA_info *na_cur, *na_next;
-    struct oui *oui_cur, *oui_next;
 
     struct pcap_pkthdr pkh;
 
@@ -2710,7 +2944,7 @@ int main( int argc, char *argv[] )
 
     /* initialize a bunch of variables */
 
-	srand( time( NULL ) );
+    srand( time( NULL ) );
     memset( &G, 0, sizeof( G ) );
 
     h80211         =  NULL;
@@ -2783,13 +3017,6 @@ int main( int argc, char *argv[] )
 
     lt = localtime( (time_t *) &tv0.tv_sec );
 
-    G.keyout = (char*) malloc(512);
-    memset( G.keyout, 0, 512 );
-    snprintf( G.keyout,  511,
-              "keyout-%02d%02d-%02d%02d%02d.keys",
-              lt->tm_mon + 1, lt->tm_mday,
-              lt->tm_hour, lt->tm_min, lt->tm_sec );
-
     for(i=0; i<MAX_CARDS; i++)
     {
         arptype[i]=0;
@@ -2820,13 +3047,40 @@ int main( int argc, char *argv[] )
         //use channels
         chan_count = getchancount(0);
 
-	G.channel[0]= 6;	
-        for( i=0; i<G.num_cards; i++ )
-        {
-             wi_set_channel(wi[i], G.channel[0]);
-             G.channel[i] = G.channel[0];
+	if( G.channel[0] == 0 )
+    	{
+            unused = pipe( G.ch_pipe );
+            unused = pipe( G.cd_pipe );
+
+            signal( SIGUSR1, sighandler );
+
+            if( ! fork() )
+            {
+           	/* reopen cards.  This way parent & child don't share resources for
+            	* accessing the card (e.g. file descriptors) which may cause
+            	* problems.  -sorbo
+            	*/
+            	for (i = 0; i < G.num_cards; i++) {
+                   strncpy(ifnam, wi_get_ifname(wi[i]), sizeof(ifnam)-1);
+                   ifnam[sizeof(ifnam)-1] = 0;
+
+                   wi_close(wi[i]);
+                   wi[i] = wi_open(ifnam);
+                   if (!wi[i]) {
+                       printf("Can't reopen %s\n", ifnam);
+                       exit(1);
+                   }
+                }
+
+                /* Drop privileges */
+                if (setuid( getuid() ) == -1) {
+                      perror("setuid");
+                }
+
+                channel_hopper(wi, G.num_cards, chan_count);
+                exit( 1 );
+            }
         }
-        G.singlechan = 1;
      }
 
      /* Drop privileges */
@@ -2835,29 +3089,30 @@ int main( int argc, char *argv[] )
 
      }
 
-    
-    signal( SIGINT,   sighandler );
-    signal( SIGSEGV,  sighandler );
-    signal( SIGTERM,  sighandler );
-    signal( SIGWINCH, sighandler );
+     signal( SIGINT,   sighandler );
+     signal( SIGSEGV,  sighandler );
+     signal( SIGTERM,  sighandler );
+     signal( SIGWINCH, sighandler );
 
-    sighandler( SIGWINCH );
+     sighandler( SIGWINCH );
     
-    start_time = time( NULL );
-    tt1        = time( NULL );
-    tt2        = time( NULL );
-    tt3        = time( NULL );
-    gettimeofday( &tv3, NULL );
-    gettimeofday( &tv4, NULL );
+     start_time = time( NULL );
+     tt1        = time( NULL );
+     tt2        = time( NULL );
+     tt3        = time( NULL );
+     gettimeofday( &tv3, NULL );
+     gettimeofday( &tv4, NULL );
+     
+     scan_existing_aps(wi, fd_raw, &fdh, G.num_cards);
 
-    while( 1 )
-    {
+     while( 1 )
+     {
         if( G.do_exit )
         {
             break;
         }
 
-       gettimeofday( &tv1, NULL );
+        gettimeofday( &tv1, NULL );
 
         cycle_time = 1000000 * ( tv1.tv_sec  - tv3.tv_sec  )
                              + ( tv1.tv_usec - tv3.tv_usec );
@@ -2988,9 +3243,6 @@ int main( int argc, char *argv[] )
 
     if(G.f_cap_name)
         free(G.f_cap_name);
-
-    if(G.keyout)
-        free(G.keyout);
 
 #ifdef HAVE_PCRE
     if(G.f_essid_regex)
