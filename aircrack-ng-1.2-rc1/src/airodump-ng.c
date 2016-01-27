@@ -543,45 +543,6 @@ int remove_namac(unsigned char* mac)
     return( 0 );
 }
 
-int smartconfig_filter_packet( unsigned char *h80211, int caplen )
-{
-    unsigned char bssid[6];
-    unsigned char dst_mac[6];
-
-    /* skip all non probe response frames in active scanning simulation mode */
-    if( G.active_scan_sim > 0 && h80211[0] != 0x50 )
-        return(0);
-
-    /* skip packets smaller than a 802.11 header */
-
-    if( caplen < 24 )
-        return(0);
-
-    /* skip (uninteresting) control frames */
-
-    if( ( h80211[0] & 0x0C ) == 0x04 )
-        return(0);
-
-    /* if it's a LLC null packet, just forget it (may change in the future) */
-    if ( caplen > 28)
-        if ( memcmp(h80211 + 24, llcnull, 4) == 0)
-            return ( 0 );
-
-    /* locate the access point's MAC address */
-    if ((h80211[1] &3) == 1){
-
-	    memcpy( bssid, h80211 + 4, 6 );  //FromDS
-        memcpy( dst_mac, h80211 +  16, 6 );  //DS
-		if(dst_mac[3] == dst_mac[4] && dst_mac[4] == dst_mac[5]) 
-		{
-			printf("The dst mac address is %02X:%02X:%02X:%02X:%02X:%02X ", dst_mac[0], dst_mac[1],dst_mac[2],dst_mac[3],dst_mac[4],dst_mac[5]);
-			printf("The bssid is %02X:%02X:%02X:%02X:%02X:%02X ", bssid[0], bssid[1],bssid[2],bssid[3],bssid[4],bssid[5]);
-			printf("The caplen: %d\n", caplen - 50 - 20 - 8);
-			return(1);
-		}
-	}
-	return(-1);
-}
 
 int dump_add_packet( unsigned char *h80211, int caplen, struct rx_info *ri, int cardnum )
 {
@@ -2734,6 +2695,50 @@ int rearrange_frequencies()
     return 0;
 }
 
+int smartconfig_filter_packet( unsigned char *h80211, int caplen )
+{
+    unsigned char bssid[6];
+    unsigned char dst_mac[6];
+
+    /* skip all non probe response frames in active scanning simulation mode */
+    if( G.active_scan_sim > 0 && h80211[0] != 0x50 )
+        return(0);
+
+    /* skip packets smaller than a 802.11 header */
+
+    if( caplen < 24 )
+        return(0);
+
+    /* skip (uninteresting) control frames */
+
+    if( ( h80211[0] & 0x0C ) == 0x04 )
+        return(0);
+
+    /* if it's a LLC null packet, just forget it (may change in the future) */
+    if ( caplen > 28)
+        if ( memcmp(h80211 + 24, llcnull, 4) == 0)
+            return ( 0 );
+
+    /* locate the access point's MAC address */
+    if ((h80211[1] &3) == 1){
+
+	    memcpy( bssid, h80211 + 4, 6 );  //FromDS
+        memcpy( dst_mac, h80211 +  16, 6 );  //DS
+		if(dst_mac[3] == dst_mac[4] && dst_mac[4] == dst_mac[5])
+		{
+			printf("The dst mac address is %02X:%02X:%02X:%02X:%02X:%02X ", dst_mac[0], dst_mac[1],dst_mac[2],dst_mac[3],dst_mac[4],dst_mac[5]);
+			printf("The bssid is %02X:%02X:%02X:%02X:%02X:%02X ", bssid[0], bssid[1],bssid[2],bssid[3],bssid[4],bssid[5]);
+			printf("The caplen: %d\n", caplen - 50 - 20 - 8);
+			return(1);
+		}
+	}
+	return(-1);
+}
+
+void packet_parse( unsigned char *h80211, int caplen )
+{
+
+}
 
 void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
 {
@@ -2747,7 +2752,7 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
     unsigned char      buffer[4096];
     unsigned char      *h80211;
     int *smartconfig_packet_num; //the num of packet that satisfy the format of smartconfig packet, i.e, the last three destination mac values are the same
-	unsigned char fixchannel = 0;
+    unsigned char fixchannel = 0;
     //scan every channel for 50ms
     struct timeval     tv0;
     struct timeval     tv1;
@@ -2868,27 +2873,97 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
 							smartconfig_packet_num[chan]++;
 							if(smartconfig_packet_num[chan] > 6)
 							{
-								fixchannel = 1;
+								fixchannel = G.channels[chan];
 								break;
 							}
 		                }
 		                dump_add_packet( h80211, caplen, &ri, 0 );
 					}
             	}
-				if(fixchannel == 1)
+				if(fixchannel != 0)
 					break;
         	}
-			if(fixchannel == 1)
+			if(fixchannel != 0)
 				break;
     	}
-		if(fixchannel == 1)
+		if(fixchannel != 0)
 			break;
     }
    // printf("Ap num: %d", get_ap_list_count());
    // print_ap_list();
-	while(1){};
+   while(1){
+       //Fix the channel
+	   //printf("Fixchannel: %d", fixchannel);
+       wi_set_channel(wi[0], fixchannel);
+       G.singlechan = 1;
+	
+       /* capture one packet */
+       FD_ZERO( &rfds );
+ 
+       for(i=0; i<cards; i++)
+            FD_SET( fd_raw[i], &rfds );
 
-	free(smartconfig_packet_num);
+       //tv0.tv_sec  = G.update_s;
+       //tv0.tv_usec = (G.update_s == 0) ? REFRESH_RATE : 0;
+
+       if( select( *fdh + 1, &rfds, NULL, NULL, &tv0 ) < 0 ){
+          if( errno == EINTR ){
+              continue;
+          }
+          perror( "select failed" );
+
+          return( 1 );
+       }
+       else
+          usleep(1);
+
+		        
+       fd_is_set = 0;
+       for( i =0; i<cards; i++)	{
+    	   if( FD_ISSET( fd_raw[i], &rfds ) ) {
+    		   memset(buffer, 0, sizeof(buffer));
+    		   h80211 = buffer;
+    		   if ((caplen = wi_read(wi[i], h80211, sizeof(buffer), &ri)) == -1) {
+    			   wi_read_failed++;
+    			   if(wi_read_failed > 1){
+    				   G.do_exit = 1;
+    				   break;
+    			   }
+    			   memset(G.message, '\x00', sizeof(G.message));
+    			   snprintf(G.message, sizeof(G.message), "][ interface %s down ", wi_get_ifname(wi[i]));
+
+    			   //reopen in monitor mode
+
+    			   strncpy(ifnam[i], wi_get_ifname(wi[i]), sizeof(ifnam)-1);
+    			   ifnam[sizeof(ifnam)-1] = 0;
+
+    			   wi_close(wi[i]);
+    			   wi[i] = wi_open(ifnam);
+    			   if (!wi[i]) {
+    				   printf("Can't reopen %s\n", ifnam);
+
+    				   /* Restore terminal */
+    				   fprintf( stderr, "\33[?25h" );
+    				   fflush( stdout );
+
+    				   exit(1);
+    			   }
+
+    			   fd_raw[i] = wi_fd(wi[i]);
+    			   if (fd_raw[i] > *fdh)
+    				   *fdh = fd_raw[i];
+
+    			   break;
+			//                         return 1;
+    		   }
+
+    		   smartconfig_filter_packet(h80211, caplen);
+    		   //dump_add_packet( h80211, caplen, &ri, 0 );
+
+    	   }
+       }
+   }
+   free(smartconfig_packet_num);
 }
 int main( int argc, char *argv[] )
 {
