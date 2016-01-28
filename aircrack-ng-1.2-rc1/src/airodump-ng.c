@@ -467,7 +467,6 @@ int remove_namac(unsigned char* mac)
     return( 0 );
 }
 
-
 int dump_add_packet( unsigned char *h80211, int caplen, struct rx_info *ri, int cardnum )
 {
     int i, n, seq, msd, dlen, offset, clen, o;
@@ -1471,18 +1470,6 @@ void sighandler( int signum)
 
     signal( signum, sighandler );
 
-    if( signum == SIGUSR1 )
-    {
-		unused = read( G.cd_pipe[0], &card, sizeof(int) );
-        if(G.freqoption)
-            unused = read( G.ch_pipe[0], &(G.frequency[card]), sizeof( int ) );
-        else
-            unused = read( G.ch_pipe[0], &(G.channel[card]), sizeof( int ) );
-    }
-
-    if( signum == SIGUSR2 )
-        unused = read( G.gc_pipe[0], &G.gps_loc, sizeof( float ) * 5 );
-
     if( signum == SIGINT || signum == SIGTERM )
     {
 	reset_term();
@@ -1583,47 +1570,6 @@ int getchancount(int valid)
     if(valid) return chan_count;
     return i;
 }
-
-int getfreqcount(int valid)
-{
-    int i=0, freq_count=0;
-
-    while(G.own_frequencies[i])
-    {
-        i++;
-        if(G.own_frequencies[i] != -1)
-            freq_count++;
-    }
-
-    if(valid) return freq_count;
-    return i;
-}
-
-int invalid_channel(int chan)
-{
-    int i=0;
-
-    do
-    {
-        if (chan == abg_chans[i] && chan != 0 )
-            return 0;
-    } while (abg_chans[++i]);
-    return 1;
-}
-
-int invalid_frequency(int freq)
-{
-    int i=0;
-
-    do
-    {
-        if (freq == frequencies[i] && freq != 0 )
-            return 0;
-    } while (frequencies[++i]);
-    return 1;
-}
-
-
 
 int setup_card(char *iface, struct wif **wis)
 {
@@ -1732,114 +1678,6 @@ int check_frequency(struct wif *wi[], int cards)
             wi_set_freq(wi[i], G.frequency[i]);
         }
     }
-    return 0;
-}
-
-int detect_frequencies(struct wif *wi)
-{
-    int start_freq = 2192;
-    int end_freq = 2732;
-    int max_freq_num = 2048; //should be enough to keep all available channels
-    int freq=0, i=0;
-
-    printf("Checking available frequencies, this could take few seconds.\n");
-
-    frequencies = (int*) malloc((max_freq_num+1) * sizeof(int)); //field for frequencies supported
-    memset(frequencies, 0, (max_freq_num+1) * sizeof(int));
-    for(freq=start_freq; freq<=end_freq; freq+=5)
-    {
-        if(wi_set_freq(wi, freq) == 0)
-        {
-            frequencies[i] = freq;
-            i++;
-        }
-        if(freq == 2482)
-        {
-            //special case for chan 14, as its 12MHz away from 13, not 5MHz
-            freq = 2484;
-            if(wi_set_freq(wi, freq) == 0)
-            {
-                frequencies[i] = freq;
-                i++;
-            }
-            freq = 2482;
-        }
-    }
-
-    //again for 5GHz channels
-    start_freq=4800;
-    end_freq=6000;
-    for(freq=start_freq; freq<=end_freq; freq+=5)
-    {
-        if(wi_set_freq(wi, freq) == 0)
-        {
-            frequencies[i] = freq;
-            i++;
-        }
-    }
-
-    printf("Done.\n");
-    return 0;
-}
-
-int array_contains(int *array, int length, int value)
-{
-    int i;
-    for(i=0;i<length;i++)
-        if(array[i] == value)
-            return 1;
-
-    return 0;
-}
-
-int rearrange_frequencies()
-{
-    int *freqs;
-    int count, left, pos;
-    int width, last_used=0;
-    int cur_freq, last_freq, round_done;
-//     int i;
-
-    width = DEFAULT_CWIDTH;
-    cur_freq=0;
-
-    count = getfreqcount(0);
-    left = count;
-    pos = 0;
-
-    freqs = malloc(sizeof(int) * (count + 1));
-    memset(freqs, 0, sizeof(int) * (count + 1));
-    round_done = 0;
-
-    while(left > 0)
-    {
-//         printf("pos: %d\n", pos);
-        last_freq = cur_freq;
-        cur_freq = G.own_frequencies[pos%count];
-        if(cur_freq == last_used)
-            round_done=1;
-//         printf("count: %d, left: %d, last_used: %d, cur_freq: %d, width: %d\n", count, left, last_used, cur_freq, width);
-        if(((count-left) > 0) && !round_done && ( ABS( last_used-cur_freq ) < width ) )
-        {
-//             printf("skip it!\n");
-            pos++;
-            continue;
-        }
-        if(!array_contains( freqs, count, cur_freq))
-        {
-//             printf("not in there yet: %d\n", cur_freq);
-            freqs[count - left] = cur_freq;
-            last_used = cur_freq;
-            left--;
-            round_done = 0;
-        }
-
-        pos++;
-    }
-
-    memcpy(G.own_frequencies, freqs, count*sizeof(int));
-    free(freqs);
-
     return 0;
 }
 
@@ -2576,7 +2414,6 @@ int main( int argc, char *argv[] )
 
     for(i=0; i<G.num_cards; i++)
         wi_close(wi[i]);
-
     
     if( ! G.save_gps )
     {
