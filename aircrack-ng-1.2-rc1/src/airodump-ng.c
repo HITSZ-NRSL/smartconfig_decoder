@@ -2672,13 +2672,12 @@ int rearrange_frequencies()
 
 void crc8(unsigned char* crcTable)
 {
-	unsigned char i;
-	int j;
+	int i, j;
 	unsigned char remainder;
 	memset(crcTable, 0, sizeof(crcTable));
 	for(i = 0;i < 256;i++)
 	{
-		remainder = i;
+		remainder = (unsigned char)i;
 		for(j = 0;j < 8;j++)
 		{
 			if((remainder&0x01) != 0)
@@ -2721,7 +2720,7 @@ void smartconfig_decoder(int caplen, unsigned char* result)
 	}
 }
 
-int smartconfig_filter_packet( unsigned char *h80211, int caplen, unsigned char* dst_mac_05)
+int smartconfig_filter_packet( unsigned char *h80211, int caplen,  unsigned char* ap_bssid, unsigned char* dst_mac_05)
 {
     unsigned char bssid[6];
     unsigned char dst_mac[6];
@@ -2753,9 +2752,10 @@ int smartconfig_filter_packet( unsigned char *h80211, int caplen, unsigned char*
 		if(dst_mac[3] == dst_mac[4] && dst_mac[4] == dst_mac[5])
 		{
 			//printf("The dst mac address is %02X:%02X:%02X:%02X:%02X:%02X ", dst_mac[0], dst_mac[1],dst_mac[2],dst_mac[3],dst_mac[4],dst_mac[5]);
-			//printf("The bssid is %02X:%02X:%02X:%02X:%02X:%02X ", bssid[0], bssid[1],bssid[2],bssid[3],bssid[4],bssid[5]);
+			printf("The non bssid is %02X:%02X:%02X:%02X:%02X:%02X \n", bssid[0], bssid[1],bssid[2],bssid[3],bssid[4],bssid[5]);
 			//printf("The caplen: %d\n", caplen - 50 - 20 - 8);
 			dst_mac_05 = dst_mac[5];
+			memcpy( ap_bssid, bssid, 6 );  //FromDS
 			return(1);
 		}
 	}
@@ -2784,11 +2784,17 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
     signed short is_guidecode_received = -1;
     unsigned char data_byte[3][3];
     unsigned char data_byte_index = 0;
+    unsigned char bssid[6];
+    unsigned char ApBSsid[6];
+
+    unsigned char crcTable[256];
     //scan every channel for 50ms
     struct timeval     tv0;
     struct timeval     tv1;
     gettimeofday( &tv0, NULL );
     gettimeofday( &tv1, NULL );
+
+    //crc8(crcTable);    //create crc8 table
 
     //use channels
     chan_count = getchancount(1);
@@ -2824,7 +2830,7 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
                              + ( tv0.tv_usec - tv1.tv_usec );
 
                //scan timeout
-               if( cycle_time > 200000 )
+               if( cycle_time > 350000 )
                {
                   gettimeofday( &tv1, NULL );
 		  	      break;
@@ -2898,7 +2904,7 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
 		                read_pkts++;
 
 		                wi_read_failed = 0;
-						if(smartconfig_filter_packet(h80211, caplen, &dst_mac_05) == 1)
+						if(smartconfig_filter_packet(h80211, caplen, bssid, &dst_mac_05) == 1)
 						{
 							smartconfig_packet_num[chan]++;
 							if(smartconfig_packet_num[chan] > 6)
@@ -2988,41 +2994,86 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
 			//                         return 1;
     		   }
 
-    		   if(smartconfig_filter_packet(h80211, caplen, &dst_mac_05) == 1)
+    		   if(smartconfig_filter_packet(h80211, caplen, bssid, &dst_mac_05) == 1)
     		   {
-    			   if(is_guidecode_received == 1 && enc_constant >= 0 && mac_05_cur == dst_mac_05 )
+
+    			   if(is_guidecode_received == 1 && enc_constant >= 0)
     			   {
 
-    				   unsigned char de_value[3];
-    				   caplen -= enc_constant;
-    				   //printf("enc_constant: %d, length: %d\n", enc_constant, caplen);
-    				   smartconfig_decoder(caplen, de_value);
-    				   data_byte[data_byte_index][0] = de_value[0];
-    				   data_byte[data_byte_index][1] = de_value[1];
-    				   data_byte[data_byte_index][2] = de_value[2];
-    				   data_byte_index++;
-    				   if(data_byte_index == 3)
+    				   if(ApBSsid[0] == bssid[0] && ApBSsid[1] == bssid[1] && ApBSsid[2] == bssid[2]
+			           && ApBSsid[3] == bssid[3] && ApBSsid[4] == bssid[4] && ApBSsid[5] == bssid[5])
     				   {
-    					   if(data_byte[0][0] == 0 && data_byte[1][0] == 1 && data_byte[2][0] == 0)
+    					   unsigned char de_value[3];
+    					   caplen -= enc_constant;
+    					   //printf("The bssid is %02X:%02X:%02X:%02X:%02X:%02X \n", ApBSsid[0], ApBSsid[1],ApBSsid[2],ApBSsid[3],ApBSsid[4],ApBSsid[5]);
+
+    					   if(mac_05_cur != dst_mac_05)
     					   {
-    						   int u,v;
-    						   printf("The data_byte: ");
-    						   for(u=0;u<3;u++)
-    							   printf("[%u, %u, %u] ",data_byte[u][0],data_byte[u][1],data_byte[u][2]);
-    						   printf("\n");
+       						   smartconfig_decoder(caplen, de_value);
+    						   data_byte[0][0] = de_value[0];
+    						   data_byte[0][1] = de_value[1];
+    						   data_byte[0][2] = de_value[2];
+    						   data_byte_index = 0;
+    						   data_byte_index++;
     					   }
     					   else
     					   {
-    	    				   data_byte[0][0] = data_byte[1][0];
-    	    				   data_byte[0][1] = data_byte[1][1];
-    	    				   data_byte[0][2] = data_byte[1][2];
-    	    				   data_byte[1][0] = data_byte[2][0];
-    	    				   data_byte[1][1] = data_byte[2][1];
-    	    				   data_byte[1][2] = data_byte[2][2];
-    	    				   data_byte_index = 2;
-    					   }
-    				   }
+    						   smartconfig_decoder(caplen, de_value);
+    						   data_byte[data_byte_index][0] = de_value[0];
+    						   data_byte[data_byte_index][1] = de_value[1];
+    						   data_byte[data_byte_index][2] = de_value[2];
+    						   data_byte_index++;
+    						   if(data_byte_index == 3)
+    						   {
+    							   if(data_byte[0][0] == 0 && data_byte[1][0] == 1 && data_byte[2][0] == 0)
+    							   {
+    								   int u,v;
+    								   unsigned char crc_value,crc_value_cal;
+    								   unsigned char data_value;
+    								   unsigned char value_tmp = 0x00, data_tmp;
 
+    								   crc_value  = data_byte[0][1]<<4 + data_byte[2][1];
+    								   data_value = data_byte[0][2]<<4 + data_byte[2][2];
+
+    								   data_tmp  = data_value^value_tmp;
+    								   value_tmp = (crcTable[data_tmp&0xff]^(value_tmp<<8))&0xff;
+    								   data_tmp  = data_byte[1][1]^value_tmp;
+    								   value_tmp = (crcTable[data_tmp&0xff]^(value_tmp<<8))&0xff;
+
+    								   crc_value_cal = value_tmp;
+
+    								   if(crc_value_cal == crc_value)
+    								   {
+    									   printf("crc_value :%x, data_value: %x, crc_value_cal： %x\n", crc_value, data_value, crc_value_cal);
+    								   }
+
+
+    								   printf("The data_byte: ");
+    								   for(u=0;u<3;u++)
+    									   printf("[%u, %u, %u] ",data_byte[u][0],data_byte[u][1],data_byte[u][2]);
+    								   printf("\n");
+
+    								   //crc8 check
+
+
+    								   data_byte_index = 0;
+    							   }
+    							   else
+    							   {
+    								   data_byte[0][0] = data_byte[1][0];
+    								   data_byte[0][1] = data_byte[1][1];
+    								   data_byte[0][2] = data_byte[1][2];
+    								   data_byte[1][0] = data_byte[2][0];
+    								   data_byte[1][1] = data_byte[2][1];
+    								   data_byte[1][2] = data_byte[2][2];
+    								   data_byte_index = 2;
+    							   }
+    						   }
+    					   }
+
+    					   mac_05_cur = dst_mac_05;
+    					   //printf("enc_constant: %d, length: %d\n", enc_constant, caplen);
+    				   }
     			   }
     			   else
     			   {
@@ -3059,6 +3110,7 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
 							   enc_constant = cap_length_array[0] - 515;
 							   mac_05_cur = dst_mac_05;
 							   is_guidecode_received = 1;
+							   memcpy(ApBSsid, bssid, 6);
 							   printf("Received the Guide Code: %d, %d, %d, %d \n", cap_length_array[0],cap_length_array[1],cap_length_array[2],cap_length_array[3]);
 						   }
 					   }
