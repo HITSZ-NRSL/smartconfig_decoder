@@ -86,19 +86,6 @@ void reset_term() {
   tcsetattr( STDIN_FILENO, TCSANOW, &newt );
 }
 
-int mygetch( ) {
-  struct termios oldt,
-                 newt;
-  int            ch;
-  tcgetattr( STDIN_FILENO, &oldt );
-  newt = oldt;
-  newt.c_lflag &= ~( ICANON | ECHO );
-  tcsetattr( STDIN_FILENO, TCSANOW, &newt );
-  ch = getchar();
-  tcsetattr( STDIN_FILENO, TCSANOW, &oldt );
-  return ch;
-}
-
 void resetSelection()
 {
     G.sort_by = SORT_BY_POWER;
@@ -115,21 +102,6 @@ void resetSelection()
     G.do_pause=0;
     G.do_sort_always=0;
     memset(G.selected_bssid, '\x00', 6);
-}
-
-
-void trim(char *str)
-{
-    int i;
-    int begin = 0;
-    int end = strlen(str) - 1;
-
-    while (isspace((int)str[begin])) begin++;
-    while ((end >= begin) && isspace((int)str[end])) end--;
-    // Shift all characters back to the start of the string array.
-    for (i = begin; i <= end; i++)
-        str[i - begin] = str[i];
-    str[i - begin] = '\0'; // Null terminate string.
 }
 
 int check_shared_key(unsigned char *h80211, int caplen)
@@ -282,54 +254,6 @@ int check_shared_key(unsigned char *h80211, int caplen)
     memset(G.sharedkey, '\x00', 512*3);
     /* ok, keystream saved */
     return 0;
-}
-
-int is_filtered_netmask(unsigned char *bssid)
-{
-    unsigned char mac1[6];
-    unsigned char mac2[6];
-    int i;
-
-    for(i=0; i<6; i++)
-    {
-        mac1[i] = bssid[i]     & G.f_netmask[i];
-        mac2[i] = G.f_bssid[i] & G.f_netmask[i];
-    }
-
-    if( memcmp(mac1, mac2, 6) != 0 )
-    {
-        return( 1 );
-    }
-
-    return 0;
-}
-
-int is_filtered_essid(unsigned char *essid)
-{
-    int ret = 0;
-    int i;
-
-    if(G.f_essid)
-    {
-        for(i=0; i<G.f_essid_count; i++)
-        {
-            if(strncmp((char*)essid, G.f_essid[i], MAX_IE_ELEMENT_SIZE) == 0)
-            {
-                return 0;
-            }
-        }
-
-        ret = 1;
-    }
-
-#ifdef HAVE_PCRE
-    if(G.f_essid_regex)
-    {
-        return pcre_exec(G.f_essid_regex, NULL, (char*)essid, strnlen((char *)essid, MAX_IE_ELEMENT_SIZE), 0, 0, NULL, 0) < 0;
-    }
-#endif
-
-    return ret;
 }
 
 int update_dataps()
@@ -598,18 +522,6 @@ int dump_add_packet( unsigned char *h80211, int caplen, struct rx_info *ri, int 
         case  1: memcpy( bssid, h80211 +  4, 6 ); break;  //ToDS
         case  2: memcpy( bssid, h80211 + 10, 6 ); break;  //FromDS
         case  3: memcpy( bssid, h80211 + 10, 6 ); break;  //WDS -> Transmitter taken as BSSID
-    }
-    
-    if( memcmp(G.f_bssid, NULL_MAC, 6) != 0 )
-    {
-        if( memcmp(G.f_netmask, NULL_MAC, 6) != 0 )
-        {
-            if(is_filtered_netmask(bssid)) return(1);
-        }
-        else
-        {
-            if( memcmp(G.f_bssid, bssid, 6) != 0 ) return(1);
-        }
     }
 
     /* update our chained list of access points */
@@ -1392,11 +1304,6 @@ write_packet:
             return(1);
         }
 
-        if(is_filtered_essid(ap_cur->essid))
-        {
-            return(1);
-        }
-
     }
 
     /* this changes the local ap_cur, st_cur and na_cur variables and should be the last check befor the actual write */
@@ -1554,266 +1461,8 @@ write_packet:
         }
     }
 
-    if( G.f_cap != NULL && caplen >= 10)
-    {
-        pkh.caplen = pkh.len = caplen;
-
-        gettimeofday( &tv, NULL );
-
-        pkh.tv_sec  =   tv.tv_sec;
-        pkh.tv_usec = ( tv.tv_usec & ~0x1ff ) + ri->ri_power + 64;
-
-        n = sizeof( pkh );
-
-        if( fwrite( &pkh, 1, n, G.f_cap ) != (size_t) n )
-        {
-            perror( "fwrite(packet header) failed" );
-            return( 1 );
-        }
-
-        fflush( stdout );
-
-        n = pkh.caplen;
-
-        if( fwrite( h80211, 1, n, G.f_cap ) != (size_t) n )
-        {
-            perror( "fwrite(packet data) failed" );
-            return( 1 );
-        }
-
-        fflush( stdout );
-    }
-
     return( 0 );
 }
-
-
-char * getStringTimeFromSec(double seconds)
-{
-    int hour[3];
-    char * ret;
-    char * HourTime;
-    char * MinTime;
-
-    if (seconds <0)
-        return NULL;
-
-    ret = (char *) calloc(1,256);
-
-    HourTime = (char *) calloc (1,128);
-    MinTime  = (char *) calloc (1,128);
-
-    hour[0]  = (int) (seconds);
-    hour[1]  = hour[0] / 60;
-    hour[2]  = hour[1] / 60;
-    hour[0] %= 60 ;
-    hour[1] %= 60 ;
-
-    if (hour[2] != 0 )
-        snprintf(HourTime, 128, "%d %s", hour[2], ( hour[2] == 1 ) ? "hour" : "hours");
-    if (hour[1] != 0 )
-        snprintf(MinTime, 128, "%d %s", hour[1], ( hour[1] == 1 ) ? "min" : "mins");
-
-    if ( hour[2] != 0 && hour[1] != 0 )
-        snprintf(ret, 256, "%s %s", HourTime, MinTime);
-    else
-    {
-        if (hour[2] == 0 && hour[1] == 0)
-            snprintf(ret, 256, "%d s", hour[0] );
-        else
-            snprintf(ret, 256, "%s", (hour[2] == 0) ? MinTime : HourTime );
-    }
-
-    free(MinTime);
-    free(HourTime);
-
-    return ret;
-
-}
-
-int print_ap_list() 
-{
-    time_t tt;
-    struct tm *lt;
-    struct AP_info *ap_cur;
-
-    int num_ap;
-
-    tt = time( NULL );
-    lt = localtime( &tt );
-
-    ap_cur = G.ap_end;
-
-    num_ap = 0;
-
-    while( ap_cur != NULL )
-    {
-        /* skip APs with only one packet, or those older than 2 min.
-         * always skip if bssid == broadcast */
-
-        if( ap_cur->nb_pkt < 2 || time( NULL ) - ap_cur->tlast > G.berlin ||
-            memcmp( ap_cur->bssid, BROADCAST, 6 ) == 0 )
-        {
-            ap_cur = ap_cur->prev;
-            continue;
-        }
-
-        if(ap_cur->security != 0 && G.f_encrypt != 0 && ((ap_cur->security & G.f_encrypt) == 0))
-        {
-            ap_cur = ap_cur->prev;
-            continue;
-        }
-
-        if(is_filtered_essid(ap_cur->essid))
-        {
-            ap_cur = ap_cur->prev;
-            continue;
-        }
-
-	num_ap++;
-  	printf("%02X:%02X:%02X:%02X:%02X:%02X %u.%u.%u.%u %s %d\n", 
-				ap_cur->bssid[0], ap_cur->bssid[1], ap_cur->bssid[2], ap_cur->bssid[3], ap_cur->bssid[4], ap_cur->bssid[5], 
-				ap_cur->lanip[0],ap_cur->lanip[1],ap_cur->lanip[2],ap_cur->lanip[3], ap_cur->essid, ap_cur->channel);
-	ap_cur = ap_cur->prev;
-    }
-
-    return num_ap;
-}
-
-int get_ap_list_count() {
-
-    time_t tt;
-    struct tm *lt;
-    struct AP_info *ap_cur;
-
-    int num_ap;
-
-    tt = time( NULL );
-    lt = localtime( &tt );
-
-    ap_cur = G.ap_end;
-
-    num_ap = 0;
-
-    while( ap_cur != NULL )
-    {
-        /* skip APs with only one packet, or those older than 2 min.
-         * always skip if bssid == broadcast */
-
-        if( ap_cur->nb_pkt < 2 || time( NULL ) - ap_cur->tlast > G.berlin ||
-            memcmp( ap_cur->bssid, BROADCAST, 6 ) == 0 )
-        {
-            ap_cur = ap_cur->prev;
-            continue;
-        }
-
-        if(ap_cur->security != 0 && G.f_encrypt != 0 && ((ap_cur->security & G.f_encrypt) == 0))
-        {
-            ap_cur = ap_cur->prev;
-            continue;
-        }
-
-        if(is_filtered_essid(ap_cur->essid))
-        {
-            ap_cur = ap_cur->prev;
-            continue;
-        }
-
-	num_ap++;
-	ap_cur = ap_cur->prev;
-    }
-
-    return num_ap;
-}
-
-int get_sta_list_count() {
-    time_t tt;
-    struct tm *lt;
-    struct AP_info *ap_cur;
-    struct ST_info *st_cur;
-
-    int num_sta;
-
-    tt = time( NULL );
-    lt = localtime( &tt );
-
-    ap_cur = G.ap_end;
-
-    num_sta = 0;
-
-    while( ap_cur != NULL )
-    {
-        if( ap_cur->nb_pkt < 2 ||
-            time( NULL ) - ap_cur->tlast > G.berlin )
-        {
-            ap_cur = ap_cur->prev;
-            continue;
-        }
-
-        if(ap_cur->security != 0 && G.f_encrypt != 0 && ((ap_cur->security & G.f_encrypt) == 0))
-        {
-            ap_cur = ap_cur->prev;
-            continue;
-        }
-
-        // Don't filter unassociated clients by ESSID
-        if(memcmp(ap_cur->bssid, BROADCAST, 6) && is_filtered_essid(ap_cur->essid))
-        {
-            ap_cur = ap_cur->prev;
-            continue;
-        }
-
-        st_cur = G.st_end;
-
-        while( st_cur != NULL )
-        {
-            if( st_cur->base != ap_cur ||
-                time( NULL ) - st_cur->tlast > G.berlin )
-            {
-                st_cur = st_cur->prev;
-                continue;
-            }
-
-            if( ! memcmp( ap_cur->bssid, BROADCAST, 6 ) && G.asso_client )
-            {
-                st_cur = st_cur->prev;
-                continue;
-            }
-
-	    num_sta++;
-
-            st_cur = st_cur->prev;
-        }
-
-        ap_cur = ap_cur->prev;
-    }
-    return num_sta;
-}
-
-#define TSTP_SEC 1000000ULL /* It's a 1 MHz clock, so a million ticks per second! */
-#define TSTP_MIN (TSTP_SEC * 60ULL)
-#define TSTP_HOUR (TSTP_MIN * 60ULL)
-#define TSTP_DAY (TSTP_HOUR * 24ULL)
-
-static char *parse_timestamp(unsigned long long timestamp) {
-	static char s[15];
-	unsigned long long rem;
-	unsigned int days, hours, mins, secs;
-
-	days = timestamp / TSTP_DAY;
-	rem = timestamp % TSTP_DAY;
-	hours = rem / TSTP_HOUR;
-	rem %= TSTP_HOUR;
-	mins = rem / TSTP_MIN;
-	rem %= TSTP_MIN;
-	secs = rem / TSTP_SEC;
-
-	snprintf(s, 14, "%3dd %02d:%02d:%02d", days, hours, mins, secs);
-
-	return s;
-}
-
-#undef TIME_STR_LENGTH
 
 void sighandler( int signum)
 {
@@ -1950,200 +1599,6 @@ int getfreqcount(int valid)
     return i;
 }
 
-void channel_hopper(struct wif *wi[], int if_num, int chan_count )
-{
-	ssize_t unused;
-    int ch, ch_idx = 0, card=0, chi=0, cai=0, j=0, k=0, first=1, again=1;
-    int dropped=0;
-
-    while( getppid() != 1 )
-    {
-        for( j = 0; j < if_num; j++ )
-        {
-            again = 1;
-
-            ch_idx = chi % chan_count;
-
-            card = cai % if_num;
-
-            ++chi;
-            ++cai;
-
-            if( G.chswitch == 2 && !first )
-            {
-                j = if_num - 1;
-                card = if_num - 1;
-
-                if( getchancount(1) > if_num )
-                {
-                    while( again )
-                    {
-                        again = 0;
-                        for( k = 0; k < ( if_num - 1 ); k++ )
-                        {
-                            if( G.channels[ch_idx] == G.channel[k] )
-                            {
-                                again = 1;
-                                ch_idx = chi % chan_count;
-                                chi++;
-                            }
-                        }
-                    }
-                }
-            }
-
-            if( G.channels[ch_idx] == -1 )
-            {
-                j--;
-                cai--;
-                dropped++;
-                if(dropped >= chan_count)
-                {
-                    ch = wi_get_channel(wi[card]);
-                    G.channel[card] = ch;
-                    unused = write( G.cd_pipe[1], &card, sizeof(int) );
-                    unused = write( G.ch_pipe[1], &ch, sizeof( int ) );
-                    kill( getppid(), SIGUSR1 );
-                    usleep(1000);
-                }
-                continue;
-            }
-
-            dropped = 0;
-
-            ch = G.channels[ch_idx];
-
-            if(wi_set_channel(wi[card], ch ) == 0 )
-            {
-                G.channel[card] = ch;
-                unused = write( G.cd_pipe[1], &card, sizeof(int) );
-                unused = write( G.ch_pipe[1], &ch, sizeof( int ) );
-                if(G.active_scan_sim > 0)
-                    send_probe_request(wi[card]);
-                kill( getppid(), SIGUSR1 );
-                usleep(1000);
-            }
-            else
-            {
-                G.channels[ch_idx] = -1;      /* remove invalid channel */
-                j--;
-                cai--;
-                continue;
-            }
-        }
-
-        if(G.chswitch == 0)
-        {
-            chi=chi-(if_num - 1);
-        }
-
-        if(first)
-        {
-            first = 0;
-        }
-
-        usleep( (G.hopfreq*1000) );
-    }
-
-    exit( 0 );
-}
-
-void frequency_hopper(struct wif *wi[], int if_num, int chan_count )
-{
-	ssize_t unused;
-    int ch, ch_idx = 0, card=0, chi=0, cai=0, j=0, k=0, first=1, again=1;
-    int dropped=0;
-
-    while( getppid() != 1 )
-    {
-        for( j = 0; j < if_num; j++ )
-        {
-            again = 1;
-
-            ch_idx = chi % chan_count;
-
-            card = cai % if_num;
-
-            ++chi;
-            ++cai;
-
-            if( G.chswitch == 2 && !first )
-            {
-                j = if_num - 1;
-                card = if_num - 1;
-
-                if( getfreqcount(1) > if_num )
-                {
-                    while( again )
-                    {
-                        again = 0;
-                        for( k = 0; k < ( if_num - 1 ); k++ )
-                        {
-                            if( G.own_frequencies[ch_idx] == G.frequency[k] )
-                            {
-                                again = 1;
-                                ch_idx = chi % chan_count;
-                                chi++;
-                            }
-                        }
-                    }
-                }
-            }
-
-            if( G.own_frequencies[ch_idx] == -1 )
-            {
-                j--;
-                cai--;
-                dropped++;
-                if(dropped >= chan_count)
-                {
-                    ch = wi_get_freq(wi[card]);
-                    G.frequency[card] = ch;
-                    unused = write( G.cd_pipe[1], &card, sizeof(int) );
-                    unused = write( G.ch_pipe[1], &ch, sizeof( int ) );
-                    kill( getppid(), SIGUSR1 );
-                    usleep(1000);
-                }
-                continue;
-            }
-
-            dropped = 0;
-
-            ch = G.own_frequencies[ch_idx];
-
-            if(wi_set_freq(wi[card], ch ) == 0 )
-            {
-                G.frequency[card] = ch;
-                unused = write( G.cd_pipe[1], &card, sizeof(int) );
-                unused = write( G.ch_pipe[1], &ch, sizeof( int ) );
-                kill( getppid(), SIGUSR1 );
-                usleep(1000);
-            }
-            else
-            {
-                G.own_frequencies[ch_idx] = -1;      /* remove invalid channel */
-                j--;
-                cai--;
-                continue;
-            }
-        }
-
-        if(G.chswitch == 0)
-        {
-            chi=chi-(if_num - 1);
-        }
-
-        if(first)
-        {
-            first = 0;
-        }
-
-        usleep( (G.hopfreq*1000) );
-    }
-
-    exit( 0 );
-}
-
 int invalid_channel(int chan)
 {
     int i=0;
@@ -2168,262 +1623,7 @@ int invalid_frequency(int freq)
     return 1;
 }
 
-/* parse a string, for example "1,2,3-7,11" */
 
-int getchannels(const char *optarg)
-{
-    unsigned int i=0,chan_cur=0,chan_first=0,chan_last=0,chan_max=128,chan_remain=0;
-    char *optchan = NULL, *optc;
-    char *token = NULL;
-    int *tmp_channels;
-
-    //got a NULL pointer?
-    if(optarg == NULL)
-        return -1;
-
-    chan_remain=chan_max;
-
-    //create a writable string
-    optc = optchan = (char*) malloc(strlen(optarg)+1);
-    strncpy(optchan, optarg, strlen(optarg));
-    optchan[strlen(optarg)]='\0';
-
-    tmp_channels = (int*) malloc(sizeof(int)*(chan_max+1));
-
-    //split string in tokens, separated by ','
-    while( (token = strsep(&optchan,",")) != NULL)
-    {
-        //range defined?
-        if(strchr(token, '-') != NULL)
-        {
-            //only 1 '-' ?
-            if(strchr(token, '-') == strrchr(token, '-'))
-            {
-                //are there any illegal characters?
-                for(i=0; i<strlen(token); i++)
-                {
-                    if( (token[i] < '0') && (token[i] > '9') && (token[i] != '-'))
-                    {
-                        free(tmp_channels);
-                        free(optc);
-                        return -1;
-                    }
-                }
-
-                if( sscanf(token, "%d-%d", &chan_first, &chan_last) != EOF )
-                {
-                    if(chan_first > chan_last)
-                    {
-                        free(tmp_channels);
-                        free(optc);
-                        return -1;
-                    }
-                    for(i=chan_first; i<=chan_last; i++)
-                    {
-                        if( (! invalid_channel(i)) && (chan_remain > 0) )
-                        {
-                                tmp_channels[chan_max-chan_remain]=i;
-                                chan_remain--;
-                        }
-                    }
-                }
-                else
-                {
-                    free(tmp_channels);
-                    free(optc);
-                    return -1;
-                }
-
-            }
-            else
-            {
-                free(tmp_channels);
-                free(optc);
-                return -1;
-            }
-        }
-        else
-        {
-            //are there any illegal characters?
-            for(i=0; i<strlen(token); i++)
-            {
-                if( (token[i] < '0') && (token[i] > '9') )
-                {
-                    free(tmp_channels);
-                    free(optc);
-                    return -1;
-                }
-            }
-
-            if( sscanf(token, "%d", &chan_cur) != EOF)
-            {
-                if( (! invalid_channel(chan_cur)) && (chan_remain > 0) )
-                {
-                        tmp_channels[chan_max-chan_remain]=chan_cur;
-                        chan_remain--;
-                }
-
-            }
-            else
-            {
-                free(tmp_channels);
-                free(optc);
-                return -1;
-            }
-        }
-    }
-
-    G.own_channels = (int*) malloc(sizeof(int)*(chan_max - chan_remain + 1));
-
-    for(i=0; i<(chan_max - chan_remain); i++)
-    {
-        G.own_channels[i]=tmp_channels[i];
-    }
-
-    G.own_channels[i]=0;
-
-    free(tmp_channels);
-    free(optc);
-    if(i==1) return G.own_channels[0];
-    if(i==0) return -1;
-    return 0;
-}
-
-/* parse a string, for example "1,2,3-7,11" */
-
-int getfrequencies(const char *optarg)
-{
-    unsigned int i=0,freq_cur=0,freq_first=0,freq_last=0,freq_max=10000,freq_remain=0;
-    char *optfreq = NULL, *optc;
-    char *token = NULL;
-    int *tmp_frequencies;
-
-    //got a NULL pointer?
-    if(optarg == NULL)
-        return -1;
-
-    freq_remain=freq_max;
-
-    //create a writable string
-    optc = optfreq = (char*) malloc(strlen(optarg)+1);
-    strncpy(optfreq, optarg, strlen(optarg));
-    optfreq[strlen(optarg)]='\0';
-
-    tmp_frequencies = (int*) malloc(sizeof(int)*(freq_max+1));
-
-    //split string in tokens, separated by ','
-    while( (token = strsep(&optfreq,",")) != NULL)
-    {
-        //range defined?
-        if(strchr(token, '-') != NULL)
-        {
-            //only 1 '-' ?
-            if(strchr(token, '-') == strrchr(token, '-'))
-            {
-                //are there any illegal characters?
-                for(i=0; i<strlen(token); i++)
-                {
-                    if( (token[i] < '0' || token[i] > '9') && (token[i] != '-'))
-                    {
-                        free(tmp_frequencies);
-                        free(optc);
-                        return -1;
-                    }
-                }
-
-                if( sscanf(token, "%d-%d", &freq_first, &freq_last) != EOF )
-                {
-                    if(freq_first > freq_last)
-                    {
-                        free(tmp_frequencies);
-                        free(optc);
-                        return -1;
-                    }
-                    for(i=freq_first; i<=freq_last; i++)
-                    {
-                        if( (! invalid_frequency(i)) && (freq_remain > 0) )
-                        {
-                                tmp_frequencies[freq_max-freq_remain]=i;
-                                freq_remain--;
-                        }
-                    }
-                }
-                else
-                {
-                    free(tmp_frequencies);
-                    free(optc);
-                    return -1;
-                }
-
-            }
-            else
-            {
-                free(tmp_frequencies);
-                free(optc);
-                return -1;
-            }
-        }
-        else
-        {
-            //are there any illegal characters?
-            for(i=0; i<strlen(token); i++)
-            {
-                if( (token[i] < '0') && (token[i] > '9') )
-                {
-                    free(tmp_frequencies);
-                    free(optc);
-                    return -1;
-                }
-            }
-
-            if( sscanf(token, "%d", &freq_cur) != EOF)
-            {
-                if( (! invalid_frequency(freq_cur)) && (freq_remain > 0) )
-                {
-                        tmp_frequencies[freq_max-freq_remain]=freq_cur;
-                        freq_remain--;
-                }
-
-                /* special case "-C 0" means: scan all available frequencies */
-                if(freq_cur == 0)
-                {
-                    freq_first = 1;
-                    freq_last = 9999;
-                    for(i=freq_first; i<=freq_last; i++)
-                    {
-                        if( (! invalid_frequency(i)) && (freq_remain > 0) )
-                        {
-                                tmp_frequencies[freq_max-freq_remain]=i;
-                                freq_remain--;
-                        }
-                    }
-                }
-
-            }
-            else
-            {
-                free(tmp_frequencies);
-                free(optc);
-                return -1;
-            }
-        }
-    }
-
-    G.own_frequencies = (int*) malloc(sizeof(int)*(freq_max - freq_remain + 1));
-
-    for(i=0; i<(freq_max - freq_remain); i++)
-    {
-        G.own_frequencies[i]=tmp_frequencies[i];
-    }
-
-    G.own_frequencies[i]=0;
-
-    free(tmp_frequencies);
-    free(optc);
-    if(i==1) return G.own_frequencies[0];   //exactly 1 frequency given
-    if(i==0) return -1;                     //error occured
-    return 0;                               //frequency hopping
-}
 
 int setup_card(char *iface, struct wif **wis)
 {
@@ -2467,33 +1667,6 @@ int init_cards(const char* cardstr, char *iface[], struct wif **wi)
 
     free(buf);
     return if_count;
-}
-
-int set_encryption_filter(const char* input)
-{
-    if(input == NULL) return 1;
-
-    if(strlen(input) < 3) return 1;
-
-    if(strcasecmp(input, "opn") == 0)
-        G.f_encrypt |= STD_OPN;
-
-    if(strcasecmp(input, "wep") == 0)
-        G.f_encrypt |= STD_WEP;
-
-    if(strcasecmp(input, "wpa") == 0)
-    {
-        G.f_encrypt |= STD_WPA;
-        G.f_encrypt |= STD_WPA2;
-    }
-
-    if(strcasecmp(input, "wpa1") == 0)
-        G.f_encrypt |= STD_WPA;
-
-    if(strcasecmp(input, "wpa2") == 0)
-        G.f_encrypt |= STD_WPA2;
-
-    return 0;
 }
 
 int check_monitor(struct wif *wi[], int *fd_raw, int *fdh, int cards)
@@ -2736,7 +1909,7 @@ void smartconfig_getApInfo(unsigned char *bssid, char *essid, char *enc, char *a
     }
 }
 
-void crc8(unsigned char* crcTable)
+void smartconfig_crc8(unsigned char* crcTable)
 {
 	int i, j;
 	unsigned char remainder;
@@ -2753,13 +1926,6 @@ void crc8(unsigned char* crcTable)
 		}
 		crcTable[i] = remainder;
 	}
-}
-
-int crc8_update(unsigned char* crcTable, unsigned char data)
-{
-	unsigned char value = 0x00;
-	unsigned char temp;
-	//temp = data
 }
 
 void smartconfig_decoder(int caplen, unsigned char* result)
@@ -2827,7 +1993,7 @@ int smartconfig_filter_packet( unsigned char *h80211, int caplen,  unsigned char
 	return(-1);
 }
 
-void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
+void smartconfig_scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
 {
     long cycle_time;
     int caplen=0, fd_is_set, chan_count;
@@ -2867,7 +2033,7 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
     gettimeofday( &tv0, NULL );
     gettimeofday( &tv1, NULL );
 
-    crc8(crcTable);    //create crc8 table
+    smartconfig_crc8(crcTable);    //create crc8 table
 
     //use channels
     chan_count = getchancount(1);
@@ -2906,6 +2072,9 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
                //scan timeout
                if( cycle_time > 300000 )
                {
+            	  check_monitor(wi, fd_raw, fdh, cards);
+            	  check_channel(wi, cards);
+            	  check_frequency(wi, cards);
                   gettimeofday( &tv1, NULL );
 		  	      break;
                }
@@ -3361,58 +2530,20 @@ int main( int argc, char *argv[] )
 
     G.s_iface = "mon0";
 
-    if(G.s_iface != NULL)
-    {
-        /* initialize cards */
-        G.num_cards = init_cards(G.s_iface, iface, wi);
+    /* initialize cards */
+    G.num_cards = init_cards(G.s_iface, iface, wi);
 
-        if(G.num_cards <= 0)
-            return( 1 );
+    if(G.num_cards <= 0)
+    	return( 1 );
 
-        for (i = 0; i < G.num_cards; i++) {
-            fd_raw[i] = wi_fd(wi[i]);
-            if (fd_raw[i] > fdh)
-                fdh = fd_raw[i];
-        }
-
-        //use channels
-        chan_count = getchancount(0);
-
-        if( G.channel[0] == 0 )
-        {
- //           unused = pipe( G.ch_pipe );
-  //          unused = pipe( G.cd_pipe );
-
-            //signal( SIGUSR1, sighandler );
-
-//            if( ! fork() )
-//            {
-//           	/* reopen cards.  This way parent & child don't share resources for
-//            	* accessing the card (e.g. file descriptors) which may cause
-//            	* problems.  -sorbo
-//            	*/
-//            	for (i = 0; i < G.num_cards; i++) {
-//                   strncpy(ifnam, wi_get_ifname(wi[i]), sizeof(ifnam)-1);
-//                   ifnam[sizeof(ifnam)-1] = 0;
-//
-//                   wi_close(wi[i]);
-//                   wi[i] = wi_open(ifnam);
-//                   if (!wi[i]) {
-//                       printf("Can't reopen %s\n", ifnam);
-//                       exit(1);
-//                   }
-//                }
-//
-//                /* Drop privileges */
-//                if (setuid( getuid() ) == -1) {
-//                      perror("setuid");
-//                }
-//
-//                channel_hopper(wi, G.num_cards, chan_count);
-//                exit( 1 );
-//            }
-        }
+    for (i = 0; i < G.num_cards; i++) {
+    	fd_raw[i] = wi_fd(wi[i]);
+    	if (fd_raw[i] > fdh)
+    		fdh = fd_raw[i];
     }
+
+    //use channels
+    chan_count = getchancount(0);
 
     /* Drop privileges */
     if (setuid( getuid() ) == -1) {
@@ -3424,9 +2555,9 @@ int main( int argc, char *argv[] )
     signal( SIGTERM,  sighandler );
     signal( SIGWINCH, sighandler );
 
-     sighandler( SIGWINCH );
+    sighandler( SIGWINCH );
 
-     scan_existing_aps(wi, fd_raw, &fdh, G.num_cards);
+    smartconfig_scan_existing_aps(wi, fd_raw, &fdh, G.num_cards);
 
     if(G.elapsed_time)
         free(G.elapsed_time);
