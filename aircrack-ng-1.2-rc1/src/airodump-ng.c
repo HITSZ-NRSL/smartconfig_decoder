@@ -2904,7 +2904,7 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
                              + ( tv0.tv_usec - tv1.tv_usec );
 
                //scan timeout
-               if( cycle_time > 400000 )
+               if( cycle_time > 300000 )
                {
                   gettimeofday( &tv1, NULL );
 		  	      break;
@@ -2913,14 +2913,15 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
             	/* capture one packet */
 	    
             	FD_ZERO( &rfds );
-	   			for(i=0; i<cards; i++)
+
+            	for(i=0; i<cards; i++)
             		FD_SET( fd_raw[i], &rfds );
 
-		        //tv0.tv_sec  = G.update_s;
-		        //tv0.tv_usec = (G.update_s == 0) ? REFRESH_RATE : 0;
+		        tv0.tv_sec  = G.update_s;
+		        tv0.tv_usec = (G.update_s == 0) ? REFRESH_RATE : 0;
 
 
-		        if( select( *fdh + 1, &rfds, NULL, NULL, &tv0 ) < 0 )
+		        if( select( (*fdh) + 1, &rfds, NULL, NULL, &tv0 ) < 0 )
 		        {
 		            if( errno == EINTR )
 		            {
@@ -2928,12 +2929,11 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
 		            }
 		            perror( "select failed" );
 
-		            return( 1 );
+		            return;
 		        }
 		        else
 		        	usleep(1);
 
-		        
 		        fd_is_set = 0;
             	for( i =0; i<cards; i++) 
 	    		{
@@ -3014,8 +3014,8 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
        for(i=0; i<cards; i++)
             FD_SET( fd_raw[i], &rfds );
 
-       //tv0.tv_sec  = G.update_s;
-       //tv0.tv_usec = (G.update_s == 0) ? REFRESH_RATE : 0;
+       tv0.tv_sec  = G.update_s;
+       tv0.tv_usec = (G.update_s == 0) ? REFRESH_RATE : 0;
 
        if( select( *fdh + 1, &rfds, NULL, NULL, &tv0 ) < 0 ){
           if( errno == EINTR ){
@@ -3189,6 +3189,7 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
     						   //get　Ssid
     						   smartconfig_getApInfo(ApBSsid, ApESsid, ApEnc, ApAuth);
     						   printf("ESsid: %s , ApEnc: %s, ApAuth: %s\n", ApESsid, ApEnc, ApAuth);
+    						   printf("The bssid is %02X:%02X:%02X:%02X:%02X:%02X \n", ApBSsid[0], ApBSsid[1],ApBSsid[2],ApBSsid[3],ApBSsid[4],ApBSsid[5]);
 
     					   }
 
@@ -3377,55 +3378,54 @@ int main( int argc, char *argv[] )
         //use channels
         chan_count = getchancount(0);
 
-	if( G.channel[0] == 0 )
-    	{
-            unused = pipe( G.ch_pipe );
-            unused = pipe( G.cd_pipe );
+        if( G.channel[0] == 0 )
+        {
+ //           unused = pipe( G.ch_pipe );
+  //          unused = pipe( G.cd_pipe );
 
-            signal( SIGUSR1, sighandler );
+            //signal( SIGUSR1, sighandler );
 
-            if( ! fork() )
-            {
-           	/* reopen cards.  This way parent & child don't share resources for
-            	* accessing the card (e.g. file descriptors) which may cause
-            	* problems.  -sorbo
-            	*/
-            	for (i = 0; i < G.num_cards; i++) {
-                   strncpy(ifnam, wi_get_ifname(wi[i]), sizeof(ifnam)-1);
-                   ifnam[sizeof(ifnam)-1] = 0;
-
-                   wi_close(wi[i]);
-                   wi[i] = wi_open(ifnam);
-                   if (!wi[i]) {
-                       printf("Can't reopen %s\n", ifnam);
-                       exit(1);
-                   }
-                }
-
-                /* Drop privileges */
-                if (setuid( getuid() ) == -1) {
-                      perror("setuid");
-                }
-
-                channel_hopper(wi, G.num_cards, chan_count);
-                exit( 1 );
-            }
+//            if( ! fork() )
+//            {
+//           	/* reopen cards.  This way parent & child don't share resources for
+//            	* accessing the card (e.g. file descriptors) which may cause
+//            	* problems.  -sorbo
+//            	*/
+//            	for (i = 0; i < G.num_cards; i++) {
+//                   strncpy(ifnam, wi_get_ifname(wi[i]), sizeof(ifnam)-1);
+//                   ifnam[sizeof(ifnam)-1] = 0;
+//
+//                   wi_close(wi[i]);
+//                   wi[i] = wi_open(ifnam);
+//                   if (!wi[i]) {
+//                       printf("Can't reopen %s\n", ifnam);
+//                       exit(1);
+//                   }
+//                }
+//
+//                /* Drop privileges */
+//                if (setuid( getuid() ) == -1) {
+//                      perror("setuid");
+//                }
+//
+//                channel_hopper(wi, G.num_cards, chan_count);
+//                exit( 1 );
+//            }
         }
-     }
+    }
 
-     /* Drop privileges */
-     if (setuid( getuid() ) == -1) {
-	perror("setuid");
+    /* Drop privileges */
+    if (setuid( getuid() ) == -1) {
+    	perror("setuid");
+    }
 
-     }
-
-     signal( SIGINT,   sighandler );
-     signal( SIGSEGV,  sighandler );
-     signal( SIGTERM,  sighandler );
-     signal( SIGWINCH, sighandler );
+    signal( SIGINT,   sighandler );
+    signal( SIGSEGV,  sighandler );
+    signal( SIGTERM,  sighandler );
+    signal( SIGWINCH, sighandler );
 
      sighandler( SIGWINCH );
-    
+
      scan_existing_aps(wi, fd_raw, &fdh, G.num_cards);
 
     if(G.elapsed_time)
