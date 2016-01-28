@@ -2670,6 +2670,72 @@ int rearrange_frequencies()
     return 0;
 }
 
+//get essid corresponding to bssid
+void smartconfig_getApInfo(unsigned char *bssid, char *essid, char *enc, char *auth)
+{
+
+    struct AP_info *ap_cur;
+
+    ap_cur = G.ap_end;
+
+    while( ap_cur != NULL )
+    {
+        /* skip APs with only one packet, or those older than 2 min.
+         * always skip if bssid == broadcast */
+
+        if( ap_cur->nb_pkt < 2 || time( NULL ) - ap_cur->tlast > G.berlin ||
+            memcmp( ap_cur->bssid, BROADCAST, 6 ) == 0 )
+        {
+            ap_cur = ap_cur->prev;
+            continue;
+        }
+
+        if(ap_cur->security != 0 && G.f_encrypt != 0 && ((ap_cur->security & G.f_encrypt) == 0))
+        {
+            ap_cur = ap_cur->prev;
+            continue;
+        }
+
+        if(ap_cur->bssid[0] == bssid[0] && ap_cur->bssid[1] == bssid[1] && ap_cur->bssid[2] == bssid[2]
+		&& ap_cur->bssid[3] == bssid[3] && ap_cur->bssid[4] == bssid[4] && ap_cur->bssid[5] == bssid[5])
+        {
+        	strcpy(essid, ap_cur->essid);
+        	switch(ap_cur->security & 0x000f)
+        	{
+        	case 0x0001:
+        		strcpy(enc,"NONE");
+        		break;
+        	case 0x0002:
+        		strcpy(enc,"WEP");
+        		break;
+        	case 0x0004:
+        		strcpy(enc,"WPA");
+        		break;
+        	case 0x0008:
+        		strcpy(enc, "WPA2");
+        		break;
+        	case 0x000B:
+        		strcpy(enc, "WPA/WPA2");
+        	}
+
+        	switch(ap_cur->security & 0x0f00)
+        	{
+        	case 0x0200:
+        		strcpy(auth, "NONE");
+        		break;
+        	case 0x0400:
+        		strcpy(auth, "PSK");
+        		break;
+        	case 0x0800:
+        		strcpy(auth, "MGT");
+        	}
+        	return;
+        }
+
+        ap_cur = ap_cur->prev;
+    }
+}
+
 void crc8(unsigned char* crcTable)
 {
 	int i, j;
@@ -2688,7 +2754,6 @@ void crc8(unsigned char* crcTable)
 		crcTable[i] = remainder;
 	}
 }
-
 
 int crc8_update(unsigned char* crcTable, unsigned char data)
 {
@@ -2752,7 +2817,7 @@ int smartconfig_filter_packet( unsigned char *h80211, int caplen,  unsigned char
 		if(dst_mac[3] == dst_mac[4] && dst_mac[4] == dst_mac[5])
 		{
 			//printf("The dst mac address is %02X:%02X:%02X:%02X:%02X:%02X ", dst_mac[0], dst_mac[1],dst_mac[2],dst_mac[3],dst_mac[4],dst_mac[5]);
-			printf("The non bssid is %02X:%02X:%02X:%02X:%02X:%02X \n", bssid[0], bssid[1],bssid[2],bssid[3],bssid[4],bssid[5]);
+			//printf("The non bssid is %02X:%02X:%02X:%02X:%02X:%02X \n", bssid[0], bssid[1],bssid[2],bssid[3],bssid[4],bssid[5]);
 			//printf("The caplen: %d\n", caplen - 50 - 20 - 8);
 			dst_mac_05 = dst_mac[5];
 			memcpy( ap_bssid, bssid, 6 );  //FromDS
@@ -2767,7 +2832,7 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
     long cycle_time;
     int caplen=0, fd_is_set, chan_count;
     int wi_read_failed=0;
-    int chan, i;
+    int chan, i, k;
     fd_set  rfds;
     char ifnam[64];
     struct rx_info     ri;
@@ -2786,7 +2851,15 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
     unsigned char data_byte_index = 0;
     unsigned char bssid[6];
     unsigned char ApBSsid[6];
-
+    char ApPasswd[30]; //max 30 password long
+    char ApESsid[30];
+    char ApEnc[10];
+    char ApAuth[10];
+    unsigned char srcIP[4]; //ipv4, source ip
+    unsigned char data_seq[120];   //max 120, can be a bug!
+    unsigned char data_seq_status[120];
+    int is_find_data_header = -1;
+    int is_find_passwd = -1;
     unsigned char crcTable[256];
     //scan every channel for 50ms
     struct timeval     tv0;
@@ -2794,13 +2867,14 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
     gettimeofday( &tv0, NULL );
     gettimeofday( &tv1, NULL );
 
-    //crc8(crcTable);    //create crc8 table
+    crc8(crcTable);    //create crc8 table
 
     //use channels
     chan_count = getchancount(1);
 	smartconfig_packet_num = (int *) malloc(chan_count);
 	memset(smartconfig_packet_num, 0, sizeof(smartconfig_packet_num));
-
+	memset(data_seq, 0, sizeof(data_seq));
+	memset(data_seq_status, 0, sizeof(data_seq_status));
     printf("existing channel number: %d, card num: %d \n", chan_count, cards);
 
     while(1)
@@ -2830,7 +2904,7 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
                              + ( tv0.tv_usec - tv1.tv_usec );
 
                //scan timeout
-               if( cycle_time > 350000 )
+               if( cycle_time > 400000 )
                {
                   gettimeofday( &tv1, NULL );
 		  	      break;
@@ -3032,8 +3106,8 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
     								   unsigned char data_value;
     								   unsigned char value_tmp = 0x00, data_tmp;
 
-    								   crc_value  = data_byte[0][1]<<4 + data_byte[2][1];
-    								   data_value = data_byte[0][2]<<4 + data_byte[2][2];
+    								   crc_value  = (unsigned char)(data_byte[0][1]<<4) + data_byte[2][1];
+    								   data_value = (unsigned char)(data_byte[0][2]<<4) + data_byte[2][2];
 
     								   data_tmp  = data_value^value_tmp;
     								   value_tmp = (crcTable[data_tmp&0xff]^(value_tmp<<8))&0xff;
@@ -3045,17 +3119,16 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
     								   if(crc_value_cal == crc_value)
     								   {
     									   printf("crc_value :%x, data_value: %x, crc_value_cal： %x\n", crc_value, data_value, crc_value_cal);
+    									   printf("The data_byte: ");
+    									   for(u=0;u<3;u++)
+    										   printf("[%u, %u, %u] ",data_byte[u][0],data_byte[u][1],data_byte[u][2]);
+    									   printf("\n");
+    									   if(data_byte[1][1]>=0)
+    									   {
+    										   data_seq[data_byte[1][1]] = data_value;
+    										   data_seq_status[data_byte[1][1]] = 1;  //data filled
+    									   }
     								   }
-
-
-    								   printf("The data_byte: ");
-    								   for(u=0;u<3;u++)
-    									   printf("[%u, %u, %u] ",data_byte[u][0],data_byte[u][1],data_byte[u][2]);
-    								   printf("\n");
-
-    								   //crc8 check
-
-
     								   data_byte_index = 0;
     							   }
     							   else
@@ -3072,6 +3145,53 @@ void scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int cards)
     					   }
 
     					   mac_05_cur = dst_mac_05;
+
+    					   //check whether head exist
+    					   for(k=0;k<9;k++)
+    					   {
+    						   if(data_seq_status[k]==0)
+    							   break;
+    						   if(k==8)
+    							   is_find_data_header = 1;
+    					   }
+    					   if(is_find_data_header == 1 )
+    					   {
+    						   if(data_seq[1]>0)
+    						   {
+    							   for(k=0;k<data_seq[1];k++)
+    							   {
+    								   if(data_seq_status[k+9] == 0)
+    									   break;
+    								   ApPasswd[k] = data_seq[k+9];
+    								   if(k == (data_seq[1]-1))
+    								   {
+    										is_find_passwd = 1;
+    										ApPasswd[k+1] = '\0';
+    								   }
+    							   }
+    						   }
+    						   else if(data_seq[1] == 0)
+    						   {
+    							   *ApPasswd = '\0';
+    							   is_find_passwd = 1;
+    						   }
+
+    						   if(is_find_passwd == 1)
+    							   printf("Found passwd: %s\n", ApPasswd);
+
+    						   srcIP[0] = data_seq[5];
+    						   srcIP[1] = data_seq[6];
+    						   srcIP[2] = data_seq[7];
+    						   srcIP[3] = data_seq[8];
+
+    						   printf("Source IP %u.%u.%u.%u\n", srcIP[0], srcIP[1], srcIP[2], srcIP[3]);
+
+    						   //get　Ssid
+    						   smartconfig_getApInfo(ApBSsid, ApESsid, ApEnc, ApAuth);
+    						   printf("ESsid: %s , ApEnc: %s, ApAuth: %s\n", ApESsid, ApEnc, ApAuth);
+
+    					   }
+
     					   //printf("enc_constant: %d, length: %d\n", enc_constant, caplen);
     				   }
     			   }
