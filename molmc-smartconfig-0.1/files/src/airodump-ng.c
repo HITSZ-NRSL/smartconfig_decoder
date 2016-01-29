@@ -1668,7 +1668,7 @@ void smartconfig_getApInfo(unsigned char *bssid, char *essid, char *enc, char *a
         	case 0x0008:
         		strcpy(enc, "WPA2");
         		break;
-        	case 0x000B:
+        	case 0x000C:
         		strcpy(enc, "WPA/WPA2");
         	}
 
