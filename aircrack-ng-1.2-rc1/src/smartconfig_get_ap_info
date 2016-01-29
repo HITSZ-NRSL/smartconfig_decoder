@@ -1,0 +1,58 @@
+#!/bin/sh
+
+airmon-ng stop mon0
+airmon-ng start wlan0
+ifconfig wlan0 down
+
+#. /home/intorobot/intorobot_log_tool/intorobot_log_tool.sh
+#print_inf "[$0 info]:cmd=$0 $*"
+
+echo "------------------------------------------------------------"
+echo "usage:   $0 ssid [CH SEC]"        
+echo "example: $0 xiaomi CH"   
+echo "------------------------------------------------------------"
+#exit 1
+
+ap_info=`./airodump-ng |grep SmartconfigResult`
+#echo "$ap_info"
+
+ap_info=`echo ${ap_info#*:}`
+echo $ap_info
+source_ip=`echo ${ap_info#*:} | awk '{print $1}'`
+echo $source_ip
+ssid=`echo ${ap_info} | awk '{print $2}'`
+ssid=${ssid#*:}
+echo $ssid
+enc=`echo ${ap_info} | awk '{print $3}'`
+enc=${enc#*:}
+echo $enc
+auth=`echo ${ap_info} | awk '{print $4}'`
+auth=${auth#*:}
+echo $auth
+passwd=`echo ${ap_info} | awk '{print $5}'`
+passwd=${passwd#*:}
+echo $passwd
+bssid=`echo ${ap_info} | awk '{print $6}'`
+bssid=${bssid#*:}
+echo $bssid
+
+exit 1
+   if [ "$ssid"x == ,"$1"x ]
+   then
+      result=`echo "$ssid_info" | sed -n "$counter"p | awk '{print $"'$field'"}'`
+      echo -n $result
+      print_inf "[$0 info]:get $1 $2 = $result "
+      exit 0
+   fi
+
+   let counter+=1
+
+done
+
+
+print_err "[$0 err ]:get $1 $2 error " 
+
+
+
+exit 1
+
