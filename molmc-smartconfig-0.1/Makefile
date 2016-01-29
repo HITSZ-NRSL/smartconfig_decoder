@@ -1,77 +1,58 @@
-need := 3.81
-ok := $(filter $(need),$(firstword $(sort $(MAKE_VERSION) \
-	$(need))))
-       
-ifndef ok
-    $(error fatal error... Need make $(need) but using $(MAKE_VERSION), please upgrade)
-endif
+#
+# Copyright (C) 2006-2015 OpenWrt.org
+#
+# This is free software, licensed under the GNU General Public License v2.
+# See /LICENSE for more information.
+#
 
-AC_ROOT		= .
-include		$(AC_ROOT)/common.mak
+include $(TOPDIR)/rules.mk
 
-DOCFILES        = ChangeLog INSTALLING README LICENSE AUTHORS VERSION
+PKG_NAME:=molmc-smartconfig
+PKG_VERSION:=0.1
+PKG_RELEASE:=1
+PKG_LICENSE:=GPLv2
 
-COVERITY_BUILD	?= cov-build
-COVERITY_DIR	= cov-int
+PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)
+PKG_INSTALL_DIR:=$(PKG_BUILD_DIR)/ipkg-install
 
-COVERITY_TAR_GZ	= Aircrack-ng.tar.gz
-COVERITY_CREDS_DIR	= coverity
-COVERITY_TOKEN	= $(shell cat ${COVERITY_CREDS_DIR}/token)
-COVERITY_EMAIL	= $(shell cat ${COVERITY_CREDS_DIR}/email)
+PKG_BUILD_PARALLEL:=1
+PKG_INSTALL:=1
 
-default: all
+include $(INCLUDE_DIR)/package.mk
 
-all:
-	$(MAKE) -C src $(@)
+define Package/molmc-smartconfig
+  SECTION:=net
+  CATEGORY:=Intorobot
+  DEPENDS:=+libpcap +libpthread +libopenssl +libnl +wireless-tools +ethtool
+  TITLE:=Smartconfig tools for quick wifi-connection
+  URL:=http://www.intorobot.com/
+  MAINTAINER:=CH <support@molmc.com>
+endef
 
-coverity-build:
-	$(COVERITY_BUILD) --dir $(COVERITY_DIR) $(MAKE) sqlite=true unstable=true libnl=true
+define Package/molmc-smartconfig/description
+  Smartconfig tools for quick wifi-connection
+endef
 
-coverity-package: coverity-build
-	tar czvf $(COVERITY_TAR_GZ) $(COVERITY_DIR)
+MAKE_FLAGS += prefix=/usr \
+	libnl=true \
+	sqlite=false \
+	unstable=false \
+	OSNAME=Linux
 
-coverity-upload: coverity-package
-	curl --form project=Aircrack-ng --form token=$(COVERITY_TOKEN) --form email=$(COVERITY_EMAIL) --form file=@$(COVERITY_TAR_GZ) --form version=r$(REVISION) --form description="Aircrack-ng svn r$(REVISION)" http://scan5.coverity.com/cgi-bin/upload.py
+define Build/Prepare
+	mkdir -p $(PKG_BUILD_DIR)
+	$(CP) ./files/* $(PKG_BUILD_DIR)/
+endef
 
-coverity-show-creds:
-	@echo "Token: $(COVERITY_TOKEN)"
-	@echo "Email: $(COVERITY_EMAIL)"
+define Build/Compile
+	$(MAKE) -C $(PKG_BUILD_DIR) $(MAKE_FLAGS)
+endef
 
-aircrack-ng-opt-prof_gen: all
-	mkdir -p prof
-	$(MAKE) -C src $(@)
+define Package/molmc-smartconfig/install
+	$(INSTALL_DIR) $(1)/usr/bin
+	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/* $(1)/usr/bin/
+	$(INSTALL_DIR) $(1)/usr/sbin
+	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/sbin/* $(1)/usr/sbin/
+endef
 
-aircrack-ng-opt-prof_use:
-	$(MAKE) -C src $(@)
-
-install: all
-	$(MAKE) -C src $(@)
-	$(MAKE) -C scripts $(@)
-	$(MAKE) -C manpages $(@)
-	@echo " "
-	@echo "[*] Run 'airodump-ng-oui-update' as root (or with sudo) to install or update Airodump-ng OUI file (Internet connection required)."
-
-uninstall:
-	$(MAKE) -C src $(@)
-	-rm -fr $(DESTDIR)$(docdir)
-	$(MAKE) -C manpages $(@)
-	$(MAKE) -C scripts $(@)
-
-strip:
-	$(MAKE) -C src $(@)
-
-doc:
-	install -d $(DESTDIR)$(docdir)
-	install -m 644 $(DOCFILES) $(DESTDIR)$(docdir)
-
-clean:
-	-rm -rf $(COVERITY_DIR)
-	$(MAKE) -C src $(@)
-	$(MAKE) -C test/cryptounittest $(@)
-
-distclean: clean
-
-check: 
-	$(MAKE) -C src $(@)
-	$(MAKE) -C test/cryptounittest $(@)
-	
+$(eval $(call BuildPackage,molmc-smartconfig))
