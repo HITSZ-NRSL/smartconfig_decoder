@@ -469,19 +469,13 @@ int remove_namac(unsigned char* mac)
 
 int dump_add_packet( unsigned char *h80211, int caplen, struct rx_info *ri, int cardnum )
 {
-    int i, n, seq, msd, dlen, offset, clen, o;
+    int i, n, seq, offset;
     unsigned z;
     int type, length, numuni=0, numauth=0;
-    struct pcap_pkthdr pkh;
-    struct timeval tv;
-    struct ivs2_pkthdr ivs2;
-    unsigned char *p, *org_p, c;
+    unsigned char *p, *org_p;
     unsigned char bssid[6];
     unsigned char stmac[6];
     unsigned char namac[6];
-    unsigned char clear[2048];
-    int weight[16];
-    int num_xor=0;
 
     struct AP_info *ap_cur = NULL;
     struct ST_info *st_cur = NULL;
@@ -729,8 +723,6 @@ int dump_add_packet( unsigned char *h80211, int caplen, struct rx_info *ri, int 
     }
 
 skip_station:
-skip_probe:
-
     /* packet parsing: Beacon or Probe Response */
 
     if( h80211[0] == 0x80 || h80211[0] == 0x50 )
@@ -1419,9 +1411,6 @@ write_packet:
 
 void sighandler( int signum)
 {
-	ssize_t unused;
-    int card=0;
-
     signal( signum, sighandler );
 
     if( signum == SIGINT || signum == SIGTERM )
@@ -1664,7 +1653,7 @@ void smartconfig_getApInfo(unsigned char *bssid, char *essid, char *enc, char *a
         if(ap_cur->bssid[0] == bssid[0] && ap_cur->bssid[1] == bssid[1] && ap_cur->bssid[2] == bssid[2]
 		&& ap_cur->bssid[3] == bssid[3] && ap_cur->bssid[4] == bssid[4] && ap_cur->bssid[5] == bssid[5])
         {
-        	strcpy(essid, ap_cur->essid);
+        	strcpy(essid, (char*)(ap_cur->essid));
         	switch(ap_cur->security & 0x000f)
         	{
         	case 0x0001:
@@ -1746,7 +1735,7 @@ void smartconfig_decoder(int caplen, unsigned char* result)
 int smartconfig_filter_packet( unsigned char *h80211, int caplen, unsigned char* ap_bssid, unsigned char* dst_mac_05, int *type)
 {
     unsigned char bssid[6];
-    unsigned char dst_mac[6];
+    unsigned char dst_mac[6] = {0,0,0,0,0,0};
     type = 1;
     /* skip all non probe response frames in active scanning simulation mode */
     if( G.active_scan_sim > 0 && h80211[0] != 0x50 )
@@ -1800,7 +1789,7 @@ int smartconfig_filter_packet( unsigned char *h80211, int caplen, unsigned char*
 					printf("Type: %d\n", 2);
 				else if((h80211[1] & 3) == 1)
 					printf("Type: %d\n", 1);
-				type = h80211[1] & 3;
+				type = (int)(h80211[1] & 3);
 				dst_mac_05 = dst_mac[5];
 				memcpy( ap_bssid, bssid, 6 );  //FromDS
 				return(1);
@@ -2010,8 +1999,7 @@ void smartconfig_scan_existing_aps(struct wif *wi[], int *fd_raw, int *fdh, int 
               continue;
           }
           perror( "select failed" );
-
-          return( 1 );
+          return;
        }
        else
           usleep(1);
@@ -2249,32 +2237,19 @@ packet_received:
 }
 int main( int argc, char *argv[] )
 {
-    long time_slept, cycle_time, cycle_time2;
-    int caplen=0, i, j, fdh, fd_is_set, chan_count, freq_count, unused;
+    long time_slept;
+    int i, fdh, fd_is_set, chan_count;
     int fd_raw[MAX_CARDS], arptype[MAX_CARDS];
     int valid_channel;
-    int freq [2];
-    char ifnam[64];
-    int wi_read_failed=0;
-    int n = 0;
 
     struct AP_info *ap_cur, *ap_prv, *ap_next;
     struct ST_info *st_cur, *st_next;
     struct NA_info *na_cur, *na_next;
 
-    struct pcap_pkthdr pkh;
-
-    time_t tt1, tt2, tt3, start_time;
-
     struct wif	       *wi[MAX_CARDS];
-    struct rx_info     ri;
-    unsigned char      tmpbuf[4096];
     unsigned char      buffer[4096];
     unsigned char      *h80211;
     char               *iface[MAX_CARDS];
-
-    struct tm          *lt;
-
     /* initialize a bunch of variables */
 
     memset( &G, 0, sizeof( G ) );
