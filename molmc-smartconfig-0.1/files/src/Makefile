@@ -10,8 +10,6 @@ iCFLAGS         = -w -mcpu=pentiumpro -march=pentiumpro $(COMMON_CFLAGS)
 iOPTFLAGS       = -O3 -ip -ipo -D_FILE_OFFSET_BITS=64
 PROF_DIR	= $(PWD)/prof
 
-BINFILES        = 
-
 LIBPCRE		=
 ifeq ($(PCRE), true)
 	LIBPCRE	= $(shell pcre-config --libs)
@@ -25,29 +23,16 @@ endif
 SBINFILES       = airodump-ng$(EXE) \
 		  smartconfig-response$(EXE)
 		  
-OPTFILES	= aircrack-ng-opt-prof_gen aircrack-ng-opt \
-		  aircrack-ng-opt-prof prof/*
-
-
-ifeq ($(subst TRUE,true,$(filter TRUE true,$(unstable) $(UNSTABLE))),true)
-	SBINFILES	+= wesside-ng$(EXE) tkiptun-ng$(EXE) easside-ng$(EXE)
-	BINFILES	+= buddy-ng$(EXE)
-endif
-
-
-ASM_AC		= sha1-sse2.S
-
 OBJS_ADU	= airodump-ng.o common.o crypto.o uniqueiv.o osdep/radiotap/radiotap.o
 OBJS_SCR	= smartconfig-response.o
+
 ifneq ($(OSNAME), Linux)
 	OBJS_ADU	+= osdep/common.o
 endif
 
 OSD		= osdep
 LIBS		:= -L$(OSD) -l$(OSD) $(LIBS)
-ifeq ($(OSNAME), cygwin)
-LIBS		+= -liphlpapi -lsetupapi -luuid
-endif
+
 LIBOSD		= $(OSD)/lib$(OSD).a
 
 LIBSSL		= -lssl -lcrypto
@@ -67,9 +52,7 @@ else
 	LIBSQL		=
 endif
 
-all: userland $(SBINFILES)
-
-userland: $(BINFILES)
+all: $(SBINFILES)
 
 $(LIBOSD):
 	$(MAKE) -C $(OSD)
@@ -80,19 +63,17 @@ airodump-ng$(EXE): $(OBJS_ADU) $(LIBOSD)
 smartconfig-response$(EXE): $(OBJS_SCR) 
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS_SCR) -o $(@) $(LIBS) 
 
-strip: $(BINFILES) $(SBINFILES)
-	strip $(BINFILES) $(SBINFILES)
+strip: $(SBINFILES)
+	strip $(SBINFILES)
 
 clean:
 	$(MAKE) -C $(OSD) clean
-	-rm -f $(SBINFILES) $(BINFILES) $(OPTFILES) *.o a.out
+	-rm -f $(SBINFILES) *.o a.out
 
 distclean: clean
 
 install: all
 	$(MAKE) -C $(OSD) install
-	install -d $(DESTDIR)$(bindir)
-	install -m 755 $(BINFILES) $(DESTDIR)$(bindir)
 	install -d $(DESTDIR)$(sbindir)
 	install -m 755 $(SBINFILES) $(DESTDIR)$(sbindir)
 
