@@ -36,7 +36,7 @@
 #define QUEUE_MAX 666
 
 struct queue {
-	unsigned char	q_buf[65535];
+	unsigned char	q_buf[2048];
 	int		q_len;
 
 	struct queue	*q_next;
@@ -204,7 +204,7 @@ static void net_enque(struct priv_net *pn, void *buf, int len)
 
 static int net_get_nopacket(struct priv_net *pn, void *arg, int *len)
 {
-	unsigned char buf[65535];
+	unsigned char buf[2048];
 	int l = sizeof(buf);
 	int c;
 
@@ -270,7 +270,7 @@ static int net_read(struct wif *wi, unsigned char *h80211, int len,
 		    struct rx_info *ri)
 {
 	struct priv_net *pn = wi_priv(wi);
-	uint32_t buf[11112]; // 512 * 4 = 2048
+	uint32_t buf[512]; // 512 * 4 = 2048
 	unsigned char *bufc = (unsigned char*)buf;
 	int cmd;
 	int sz = sizeof(*ri);
