@@ -1,8 +1,6 @@
 AC_ROOT		= ..
 include $(AC_ROOT)/common.mak
 
-TEST_DIR	= $(AC_ROOT)/test
-
 CFLAGS		+= -Iinclude
 
 iCC             = $(shell find /opt/intel/cc/*/bin/icc)
@@ -20,10 +18,10 @@ ifneq ($(OSNAME), cygwin) #There is yet no libpcap support for windows, so we sk
 endif
 
 
-SBINFILES       = airodump-ng$(EXE) \
+SBINFILES       = smartconfig-dump$(EXE) \
 		  smartconfig-response$(EXE)
 		  
-OBJS_ADU	= airodump-ng.o common.o crypto.o uniqueiv.o osdep/radiotap/radiotap.o
+OBJS_ADU	= smartconfig-dump.o common.o crypto.o uniqueiv.o osdep/radiotap/radiotap.o
 OBJS_SCR	= smartconfig-response.o
 
 ifneq ($(OSNAME), Linux)
@@ -57,7 +55,7 @@ all: $(SBINFILES)
 $(LIBOSD):
 	$(MAKE) -C $(OSD)
 
-airodump-ng$(EXE): $(OBJS_ADU) $(LIBOSD)
+smartconfig-dump$(EXE): $(OBJS_ADU) $(LIBOSD)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS_ADU) -o $(@) $(LIBS) $(LIBSSL) -lpthread $(LIBPCRE)
 
 smartconfig-response$(EXE): $(OBJS_SCR) 
@@ -79,6 +77,6 @@ install: all
 
 uninstall:
 	$(MAKE) -C $(OSD) uninstall
-	-rm -f $(DESTDIR)$(sbindir)/airodump-ng$(EXE)
+	-rm -f $(DESTDIR)$(sbindir)/smartconfig-dump$(EXE)
 	-rm -f $(DESTDIR)$(sbindir)/smartconfig-response$(EXE)
 	-rm -rf $(DESTDIR)$(etcdir)

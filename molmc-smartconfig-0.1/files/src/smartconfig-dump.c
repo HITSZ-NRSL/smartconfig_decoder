@@ -69,7 +69,7 @@
 #include "uniqueiv.h"
 #include "crypto.h"
 #include "osdep/osdep.h"
-#include "airodump-ng.h"
+#include "smartconfig-dump.h"
 #include "osdep/common.h"
 #include "common.h"
 
